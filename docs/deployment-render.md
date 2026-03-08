@@ -19,7 +19,10 @@
 - `ALLOWED_GOOGLE_DOMAIN` (`verodigital.co`)
 - `ENCRYPTION_KEY`
 - `ANTHROPIC_API_KEY`
-- `HUBSPOT_TOKEN` (optional, single-portal fallback)
+- `HUBSPOT_OAUTH_CLIENT_ID`
+- `HUBSPOT_OAUTH_CLIENT_SECRET`
+- `HUBSPOT_OAUTH_REDIRECT_URI`
+- `HUBSPOT_TOKEN` (optional, single-portal fallback only)
 - `NODE_ENV` (`production`)
 - `PORT` (`10000`)
 
