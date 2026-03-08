@@ -1,0 +1,81 @@
+"use client";
+
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { apiGet } from "@/lib/api";
+
+export type Portal = {
+  id: string;
+  name: string;
+  hubId: string;
+  scopes: string[];
+  environment: "production" | "sandbox";
+  createdAt: string;
+  lastValidated: string;
+};
+
+type PortalContextValue = {
+  portals: Portal[];
+  activePortal: Portal | null;
+  loading: boolean;
+  refresh: () => Promise<void>;
+  setActivePortal: (portalId: string) => Promise<void>;
+};
+
+const PortalContext = createContext<PortalContextValue | null>(null);
+const STORAGE_KEY = "vero_active_portal_id";
+
+export function PortalProvider({ children }: { children: React.ReactNode }) {
+  const [portals, setPortals] = useState<Portal[]>([]);
+  const [activePortalId, setActivePortalId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      const portalsResp = await apiGet<{ ok: true; portals: Portal[] }>("/api/portals");
+      const list = portalsResp.portals ?? [];
+      setPortals(list);
+
+      const savedId = typeof window !== "undefined" ? window.localStorage.getItem(STORAGE_KEY) : null;
+      const fallbackId = list[0]?.id ?? null;
+      const nextId = savedId && list.some((p) => p.id === savedId) ? savedId : fallbackId;
+      setActivePortalId(nextId);
+      if (nextId && typeof window !== "undefined") {
+        window.localStorage.setItem(STORAGE_KEY, nextId);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    refresh().catch(() => setLoading(false));
+  }, [refresh]);
+
+  const setActivePortal = useCallback(async (portalId: string) => {
+    setActivePortalId(portalId);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(STORAGE_KEY, portalId);
+    }
+  }, []);
+
+  const activePortal = useMemo(() => {
+    if (!activePortalId) return portals[0] || null;
+    return portals.find((portal) => portal.id === activePortalId) || portals[0] || null;
+  }, [portals, activePortalId]);
+
+  const value = useMemo(
+    () => ({ portals, activePortal, loading, refresh, setActivePortal }),
+    [portals, activePortal, loading, refresh, setActivePortal]
+  );
+
+  return <PortalContext.Provider value={value}>{children}</PortalContext.Provider>;
+}
+
+export function usePortalContext(): PortalContextValue {
+  const value = useContext(PortalContext);
+  if (!value) {
+    throw new Error("usePortalContext must be used within PortalProvider");
+  }
+  return value;
+}

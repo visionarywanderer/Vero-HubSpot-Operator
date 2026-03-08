@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    env:
+      NEXTAUTH_URL: https://example.com
+      NEXTAUTH_SECRET: 12345678901234567890123456789012
+      GOOGLE_CLIENT_ID: ci-placeholder
+      GOOGLE_CLIENT_SECRET: ci-placeholder
+      ALLOWED_GOOGLE_DOMAIN: verodigital.co
+      HUBSPOT_TOKEN: ci-placeholder
+      ENCRYPTION_KEY: 12345678901234567890123456789012
+      ANTHROPIC_API_KEY: ci-placeholder
+      NODE_ENV: test
+      PORT: 3000
+      LOG_LEVEL: info
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build

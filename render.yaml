@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: vero-hubspot-operator
+    env: node
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    autoDeploy: true
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: ALLOWED_GOOGLE_DOMAIN
+        value: verodigital.co
+      - key: NEXTAUTH_URL
+        sync: false
+      - key: NEXTAUTH_SECRET
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: HUBSPOT_TOKEN
+        sync: false
+      - key: ENCRYPTION_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false

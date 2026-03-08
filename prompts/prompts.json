@@ -1,0 +1,42 @@
+[
+  {
+    "id": "audit-association-gaps",
+    "name": "Association Gaps Audit",
+    "category": "audit",
+    "module": "A1",
+    "layer": "mcp",
+    "description": "Find missing key CRM associations",
+    "prompt": "Audit contacts/deals/companies for missing required associations. Report orphan records by type, top causes, and recommended fixes.",
+    "tags": ["audit", "associations", "crm"]
+  },
+  {
+    "id": "audit-property-usage",
+    "name": "Property Usage Audit",
+    "category": "audit",
+    "module": "C1/C5",
+    "layer": "api",
+    "description": "Identify low-value and duplicate properties",
+    "prompt": "Audit contact/company/deal properties for duplicates, near-duplicates, deprecated fields, and fill rate below 30%. Rank by cleanup impact.",
+    "tags": ["audit", "properties", "cleanup"]
+  },
+  {
+    "id": "audit-owner-distribution",
+    "name": "Owner Distribution Audit",
+    "category": "audit",
+    "module": "A4",
+    "layer": "mcp",
+    "description": "Analyze owner workload and imbalance",
+    "prompt": "Analyze owner distribution across active contacts/deals/tasks. Flag over-assigned owners, inactivity, and rebalance recommendations.",
+    "tags": ["audit", "owners", "workload"]
+  },
+  {
+    "id": "audit-lifecycle-accuracy",
+    "name": "Lifecycle Accuracy Audit",
+    "category": "audit",
+    "module": "A1",
+    "layer": "mcp",
+    "description": "Detect lifecycle stage mismatches",
+    "prompt": "Audit lifecycle stage accuracy based on recent activity and deal status. Identify mismatches and suggest corrected stage transitions.",
+    "tags": ["audit", "lifecycle", "data quality"]
+  }
+]
