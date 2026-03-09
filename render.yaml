@@ -22,6 +22,12 @@ services:
         sync: false
       - key: GOOGLE_CLIENT_SECRET
         sync: false
+      - key: HUBSPOT_OAUTH_CLIENT_ID
+        sync: false
+      - key: HUBSPOT_OAUTH_CLIENT_SECRET
+        sync: false
+      - key: HUBSPOT_OAUTH_REDIRECT_URI
+        sync: false
       - key: HUBSPOT_TOKEN
         sync: false
       - key: ENCRYPTION_KEY

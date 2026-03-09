@@ -1,0 +1,48 @@
+{
+  "name": "Vero HubSpot Operator",
+  "uid": "vero-hubspot-operator",
+  "description": "Vero Operations multi-portal operator app for HubSpot automation and governance.",
+  "allowedUrls": [
+    "https://vero-hubspot-operator.onrender.com"
+  ],
+  "auth": {
+    "redirectUrls": [
+      "https://vero-hubspot-operator.onrender.com/api/portals/callback"
+    ],
+    "requiredScopes": [
+      "oauth",
+      "crm.objects.contacts.read",
+      "crm.objects.contacts.write",
+      "crm.objects.companies.read",
+      "crm.objects.companies.write",
+      "crm.objects.deals.read",
+      "crm.objects.deals.write",
+      "crm.schemas.contacts.read",
+      "crm.schemas.companies.read",
+      "crm.schemas.deals.read",
+      "crm.lists.read",
+      "crm.lists.write",
+      "automation"
+    ],
+    "optionalScopes": [],
+    "conditionallyRequiredScopes": []
+  },
+  "support": {
+    "supportEmail": "ops@verodigital.co",
+    "documentationUrl": "https://vero-hubspot-operator.onrender.com/docs",
+    "supportUrl": "https://vero-hubspot-operator.onrender.com",
+    "supportPhone": "+15550000000"
+  },
+  "extensions": {
+    "crm": {
+      "cards": [
+        {
+          "file": "./extensions/example-card.json"
+        }
+      ]
+    }
+  },
+  "webhooks": {
+    "file": "./webhooks/webhooks.json"
+  }
+}
