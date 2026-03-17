@@ -11,10 +11,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "portalId and spec are required" }, { status: 400 });
   }
 
-  const result = await authManager.withPortal(body.portalId, async () => workflowEngine.deploy(body.spec!));
-  if (!result.success) {
-    return NextResponse.json({ ok: false, errors: result.errors ?? ["Workflow deployment blocked"] }, { status: 409 });
+  try {
+    const result = await authManager.withPortal(body.portalId, async () => workflowEngine.deploy(body.spec!));
+    if (!result.success) {
+      return NextResponse.json({ ok: false, errors: result.errors ?? ["Workflow deployment blocked"] }, { status: 409 });
+    }
+    return NextResponse.json({ ok: true, result });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Workflow deploy failed";
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
-
-  return NextResponse.json({ ok: true, result });
 }
