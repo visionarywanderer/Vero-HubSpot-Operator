@@ -4,6 +4,13 @@ import { getToken } from "next-auth/jwt";
 
 const PUBLIC_PREFIXES = ["/login", "/api/auth", "/api/health", "/api/portals/callback", "/_next"];
 
+/**
+ * Cookie name must match the one set in lib/auth.ts authOptions.cookies.
+ * We use a plain name (no __Secure- prefix) to work reliably behind
+ * Railway's SSL-terminating reverse proxy.
+ */
+const SESSION_COOKIE_NAME = "next-auth.session-token";
+
 function isMutation(method: string): boolean {
   return method === "POST" || method === "PUT" || method === "PATCH" || method === "DELETE";
 }
@@ -26,7 +33,11 @@ export async function proxy(req: NextRequest) {
     return NextResponse.next();
   }
 
-  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+  const token = await getToken({
+    req,
+    secret: process.env.NEXTAUTH_SECRET,
+    cookieName: SESSION_COOKIE_NAME,
+  });
   if (!token) {
     if (path.startsWith("/api/")) {
       return NextResponse.json(
