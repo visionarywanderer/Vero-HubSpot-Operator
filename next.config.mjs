@@ -22,7 +22,7 @@ const nextConfig = {
           {
             key: "Content-Security-Policy",
             value:
-              "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://api.hubapi.com https://app.hubspot.com https://accounts.google.com https://www.googleapis.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://app.hubspot.com https://accounts.google.com"
+              "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://api.hubapi.com https://app.hubspot.com https://accounts.google.com https://www.googleapis.com https://oauth2.googleapis.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://app.hubspot.com https://accounts.google.com https://oauth2.googleapis.com"
           },
           {
             key: "Strict-Transport-Security",

@@ -18,8 +18,6 @@ type GoogleProfile = {
   hd?: string;
 };
 
-const useSecureCookies = (process.env.NEXTAUTH_URL ?? "").startsWith("https://");
-
 export const authOptions: NextAuthOptions = {
   providers: [
     GoogleProvider({
@@ -30,37 +28,8 @@ export const authOptions: NextAuthOptions = {
   pages: {
     signIn: "/login"
   },
-  // Debug mode in production to diagnose issues (remove once login works)
-  debug: process.env.NEXTAUTH_DEBUG === "true",
-  // Explicit cookie config — avoid __Host-/__Secure- prefixes behind Railway proxy
-  cookies: {
-    sessionToken: {
-      name: "next-auth.session-token",
-      options: {
-        httpOnly: true,
-        sameSite: "lax" as const,
-        path: "/",
-        secure: useSecureCookies,
-      },
-    },
-    callbackUrl: {
-      name: "next-auth.callback-url",
-      options: {
-        sameSite: "lax" as const,
-        path: "/",
-        secure: useSecureCookies,
-      },
-    },
-    csrfToken: {
-      name: "next-auth.csrf-token",
-      options: {
-        httpOnly: true,
-        sameSite: "lax" as const,
-        path: "/",
-        secure: useSecureCookies,
-      },
-    },
-  },
+  // No custom cookie config — let NextAuth use its defaults.
+  // getToken() in middleware.ts also uses defaults, so they always match.
   callbacks: {
     async signIn({ account, profile }) {
       if (account?.provider !== "google") {
