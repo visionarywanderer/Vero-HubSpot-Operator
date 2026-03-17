@@ -6,7 +6,10 @@ import { usePathname } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import { PortalPicker } from "@/components/layout/PortalPicker";
 
-const NAV = [
+type NavItem = { label: string; href: string; external?: boolean };
+type NavGroup = { group: string; items: NavItem[] };
+
+const NAV: NavGroup[] = [
   {
     group: "OPERATE",
     items: [
@@ -34,6 +37,12 @@ const NAV = [
       { label: "Clone Portal", href: "/clone" },
       { label: "Config Diff", href: "/diff" },
       { label: "Deployments", href: "/deployments" },
+    ],
+  },
+  {
+    group: "VERO TOOLS",
+    items: [
+      { label: "HubSpot Audit", href: "https://hubspot-audit-tool-production.up.railway.app/", external: true },
     ],
   },
   {
@@ -86,6 +95,21 @@ export function Sidebar({ mobileOpen, onClose }: { mobileOpen: boolean; onClose:
               </div>
               <div className="nav-items" style={{ maxHeight: isOpen ? `${group.items.length * 34}px` : "0px" }}>
                 {group.items.map((item) => {
+                  if (item.external) {
+                    return (
+                      <a
+                        key={item.href}
+                        href={item.href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="nav-item"
+                        onClick={onClose}
+                      >
+                        {item.label}
+                        <span className="external-icon" aria-hidden="true">&thinsp;&#8599;</span>
+                      </a>
+                    );
+                  }
                   const active = pathname === item.href;
                   return (
                     <Link
