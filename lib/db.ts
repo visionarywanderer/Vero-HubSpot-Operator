@@ -4,18 +4,28 @@ import path from "path";
 
 // Resolve project root: DATABASE_PATH env var (set by Claude Desktop config) > process.cwd()
 // process.cwd() works in Next.js/Turbopack; DATABASE_PATH is needed for MCP STDIO (different cwd)
-const preferredPath = process.env.DATABASE_PATH || path.join(process.cwd(), "data", "vero.db");
-let DB_PATH = preferredPath;
-try {
-  mkdirSync(path.dirname(preferredPath), { recursive: true });
-} catch {
-  // Volume not writable — fall back to app directory
-  DB_PATH = path.join(process.cwd(), "data", "vero.db");
-  mkdirSync(path.dirname(DB_PATH), { recursive: true });
+function openDb(): Database.Database {
+  const candidates = [
+    process.env.DATABASE_PATH,
+    path.join(process.cwd(), "data", "vero.db"),
+    "/tmp/vero.db",
+  ].filter(Boolean) as string[];
+
+  for (const candidate of candidates) {
+    try {
+      mkdirSync(path.dirname(candidate), { recursive: true });
+      const instance = new Database(candidate);
+      // Verify it's actually writable
+      instance.pragma("journal_mode = WAL");
+      return instance;
+    } catch {
+      // Try next candidate
+    }
+  }
+  throw new Error("Could not open SQLite database at any candidate path");
 }
 
-const db = new Database(DB_PATH);
-db.pragma("journal_mode = WAL");
+const db = openDb();
 db.pragma("foreign_keys = ON");
 
 db.exec(`
