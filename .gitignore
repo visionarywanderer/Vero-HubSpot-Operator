@@ -11,6 +11,9 @@ yarn-error.log*
 .vercel
 .DS_Store
 .mcp.json
+*.app/
+*.command
+tsconfig.mcp.tsbuildinfo
 tsconfig.tsbuildinfo
 .data
 data/*.db

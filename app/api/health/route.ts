@@ -16,7 +16,6 @@ export async function GET() {
         googleOAuth: Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET),
         hubspotOAuth: Boolean(env.HUBSPOT_OAUTH_CLIENT_ID && env.HUBSPOT_OAUTH_CLIENT_SECRET && env.HUBSPOT_OAUTH_REDIRECT_URI),
         singlePortalEnvToken: Boolean(env.HUBSPOT_TOKEN),
-        anthropicToken: Boolean(env.ANTHROPIC_API_KEY),
         encryptionKey: Boolean(env.ENCRYPTION_KEY),
         databasePath: env.DATABASE_PATH || "./data/vero.db"
       },
