@@ -613,10 +613,13 @@ class HubSpotApiClient implements ApiClient {
     batchUpsert: async (objectType: string, records: object[], idProperty?: string): Promise<BatchResult> => {
       const result = await this.base.batchProcess(records, async (batch) => {
         const response = await this.base.post(`/crm/v3/objects/${objectType}/batch/upsert`, {
-          inputs: batch.map((properties) => ({
-            properties,
-            ...(idProperty ? { idProperty } : {}),
-          })),
+          inputs: batch.map((properties) => {
+            const props = properties as Record<string, unknown>;
+            return {
+              properties: props,
+              ...(idProperty ? { idProperty, id: props[idProperty] as string } : {}),
+            };
+          }),
         });
         const data = response.data as { results?: unknown[] };
         return data.results ?? [];
