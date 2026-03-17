@@ -32,6 +32,9 @@ COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
 
+# Copy public-app.json so the dynamic scope reader can find it at runtime
+COPY --from=builder /app/hubspot-project/src/app/public-app.json ./hubspot-project/src/app/public-app.json
+
 # Overlay full node_modules so native bindings (better-sqlite3) are present
 COPY --from=builder /app/node_modules ./node_modules
 
