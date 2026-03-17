@@ -1,26 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-
-const OAUTH_SCOPES = [
-  "oauth",
-  "crm.objects.contacts.read",
-  "crm.objects.contacts.write",
-  "crm.objects.companies.read",
-  "crm.objects.companies.write",
-  "crm.objects.deals.read",
-  "crm.objects.deals.write",
-  "crm.objects.owners.read",
-  "crm.schemas.contacts.read",
-  "crm.schemas.contacts.write",
-  "crm.schemas.companies.read",
-  "crm.schemas.companies.write",
-  "crm.schemas.deals.read",
-  "crm.schemas.deals.write",
-  "crm.lists.read",
-  "crm.lists.write",
-  "automation"
-];
+import { buildOAuthUrl, generateOAuthState } from "@/lib/hubspot-scopes";
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -32,7 +13,7 @@ export async function GET() {
     return NextResponse.json({ ok: false, error: "HubSpot OAuth env vars not configured" }, { status: 400 });
   }
 
-  const scope = encodeURIComponent(OAUTH_SCOPES.join(" "));
-  const url = `https://app.hubspot.com/oauth/authorize?client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scope}`;
+  const state = generateOAuthState();
+  const url = buildOAuthUrl(clientId, redirectUri, state);
   return NextResponse.json({ ok: true, url });
 }
