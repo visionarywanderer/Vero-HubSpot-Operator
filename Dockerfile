@@ -10,6 +10,9 @@ RUN npm ci
 
 COPY . .
 
+# Ensure public dir exists (Next.js standalone expects it)
+RUN mkdir -p public
+
 # Provide dummy values so next build doesn't fail on env validation
 ENV ENCRYPTION_KEY="build-placeholder-key-must-be-32chars!"
 RUN npm run build
