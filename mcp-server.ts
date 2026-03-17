@@ -1,10 +1,14 @@
 #!/usr/bin/env npx tsx
 /**
- * HubSpot Operator MCP Server
+ * HubSpot Operator MCP Server (HTTP Proxy Mode)
  *
- * Exposes the full HubSpot Operator as an MCP tool server.
- * LLMs talk to this server → it calls the app's validated, rate-limited,
- * audit-logged API layer → HubSpot.
+ * Proxies MCP tool calls to the Railway-deployed HubSpot Operator app
+ * via its REST API. No direct library imports — all business logic runs
+ * on the Railway server.
+ *
+ * Required env vars (loaded from .env.local):
+ *   APP_BASE_URL  — e.g. https://vero-hubspot-operator-production.up.railway.app
+ *   MCP_API_KEY   — Bearer token accepted by the app's middleware
  *
  * Transport modes:
  *   STDIO  (default)  — for Claude Code / local MCP clients
@@ -12,9 +16,6 @@
  *
  *   HTTP+SSE           — for ChatGPT / remote MCP clients
  *     npx tsx mcp-server.ts --http [--port 8080]
- *
- * ChatGPT configuration (Settings → Apps & Connectors):
- *   Server URL: https://your-domain.com/sse
  *
  * Claude Code config (.mcp.json):
  *   {
@@ -51,8 +52,16 @@ for (const envPath of envCandidates) {
 }
 
 // Verify critical env vars are present
-if (!process.env.ENCRYPTION_KEY) {
-  process.stderr.write("[mcp-server] WARNING: ENCRYPTION_KEY not found in process.env or .env.local. HubSpot API calls will fail.\n");
+const APP_BASE_URL = (process.env.APP_BASE_URL || "").replace(/\/+$/, "");
+const MCP_API_KEY = process.env.MCP_API_KEY || "";
+
+if (!APP_BASE_URL) {
+  process.stderr.write("[mcp-server] FATAL: APP_BASE_URL not set. Add it to .env.local (e.g. https://vero-hubspot-operator-production.up.railway.app)\n");
+  process.exit(1);
+}
+if (!MCP_API_KEY) {
+  process.stderr.write("[mcp-server] FATAL: MCP_API_KEY not set. Add it to .env.local\n");
+  process.exit(1);
 }
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -63,21 +72,61 @@ import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { createServer, IncomingMessage, ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-// node:url — URL is available globally in Node.js 18+
 
-// Import app's business logic
-import { authManager } from "./lib/auth-manager";
-import { apiClient } from "./lib/api-client";
-import { propertyManager } from "./lib/property-manager";
-import { pipelineManager } from "./lib/pipeline-manager";
-import { listManager } from "./lib/list-manager";
-import { workflowEngine } from "./lib/workflow-engine";
-import { executeConfig, validateConfig, installTemplate } from "./lib/config-executor";
-import { extractPortalConfig, clonePortal } from "./lib/portal-cloner";
-import { changeLogger } from "./lib/change-logger";
-import { mcpKeysStore } from "./lib/mcp-keys-store";
-import { mcpOAuthStore } from "./lib/mcp-oauth-store";
-import { startTunnel, stopTunnel, getCurrentTunnelUrl } from "./lib/tunnel-manager";
+// ---------------------------------------------------------------------------
+// HTTP API helper — all tool handlers call this instead of lib imports
+// ---------------------------------------------------------------------------
+
+interface ApiOptions {
+  method?: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
+  path: string;
+  query?: Record<string, string | number | boolean | undefined>;
+  body?: unknown;
+}
+
+async function api<T = unknown>(opts: ApiOptions): Promise<T> {
+  const url = new URL(opts.path, APP_BASE_URL);
+  if (opts.query) {
+    for (const [k, v] of Object.entries(opts.query)) {
+      if (v !== undefined && v !== null && v !== "") {
+        url.searchParams.set(k, String(v));
+      }
+    }
+  }
+
+  const method = opts.method || "GET";
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${MCP_API_KEY}`,
+    Accept: "application/json",
+  };
+  let reqBody: string | undefined;
+  if (opts.body !== undefined) {
+    headers["Content-Type"] = "application/json";
+    reqBody = JSON.stringify(opts.body);
+  }
+
+  const res = await fetch(url.toString(), { method, headers, body: reqBody });
+  const text = await res.text();
+
+  if (!res.ok) {
+    let detail: string;
+    try {
+      const parsed = JSON.parse(text);
+      detail = parsed.error || parsed.message || text;
+    } catch {
+      detail = text;
+    }
+    throw new Error(`API ${method} ${opts.path} returned ${res.status}: ${detail}`);
+  }
+
+  if (!text) return undefined as T;
+  return JSON.parse(text) as T;
+}
+
+/** Convenience: return MCP text content from any JSON-serializable value */
+function textResult(data: unknown) {
+  return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
+}
 
 // ---------------------------------------------------------------------------
 // Server setup
@@ -87,28 +136,6 @@ const server = new McpServer({
   name: "hubspot-operator",
   version: "1.0.0",
 });
-
-// ---------------------------------------------------------------------------
-// Helper: get active portal or first available
-// ---------------------------------------------------------------------------
-
-function getPortalId(requested?: string): string {
-  if (requested) return requested;
-  const portals = authManager.listPortals();
-  if (portals.length === 0) throw new Error("No HubSpot portals connected. Connect one in the app first.");
-  if (portals.length > 1) {
-    const portalList = portals.map((p) => `  - "${p.name}" (Hub ${p.hubId}, ${p.environment}) → portalId: "${p.id}"`).join("\n");
-    throw new Error(
-      `Multiple portals connected. You MUST specify a portalId to avoid cross-portal contamination.\n\nAvailable portals:\n${portalList}\n\nCall list_portals to see full details, then pass the correct portalId.`
-    );
-  }
-  return portals[0].id;
-}
-
-async function withPortal<T>(portalId: string | undefined, fn: () => Promise<T>): Promise<T> {
-  const id = getPortalId(portalId);
-  return authManager.withPortal(id, fn);
-}
 
 // ---------------------------------------------------------------------------
 // Tool registration — shared between stdio (global) and HTTP (per-session)
@@ -125,24 +152,8 @@ server.tool(
   "List all connected HubSpot portals. IMPORTANT: When multiple portals are connected, always call this first and pass the correct portalId to every other tool to avoid cross-portal contamination.",
   {},
   async () => {
-    const portals = authManager.listPortals();
-    const result = {
-      portals: portals.map((p) => ({
-        id: p.id,
-        name: p.name,
-        hubId: p.hubId,
-        environment: p.environment,
-        scopes: p.scopes,
-        capabilities: p.capabilities,
-      })),
-      count: portals.length,
-      ...(portals.length > 1 && {
-        warning: "Multiple portals connected. You MUST pass portalId to every tool call. Never assume a default — always confirm with the user which portal they want to operate on.",
-      }),
-    };
-    return {
-      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-    };
+    const data = await api({ path: "/api/portals" });
+    return textResult(data);
   }
 );
 
@@ -151,21 +162,12 @@ server.tool(
   "Get the capabilities (granted scopes) for a specific portal",
   { portalId: z.string().optional().describe("Portal/Hub ID. Omit to use the first connected portal.") },
   async ({ portalId }) => {
-    const id = getPortalId(portalId);
-    const portal = authManager.getActivePortal(id);
-    return {
-      content: [{
-        type: "text",
-        text: JSON.stringify({
-          id: portal.id,
-          name: portal.name,
-          hubId: portal.hubId,
-          scopes: portal.scopes,
-          capabilities: portal.capabilities,
-          environment: portal.environment,
-        }, null, 2),
-      }],
-    };
+    const query: Record<string, string | undefined> = {};
+    if (portalId) query.portalId = portalId;
+    // If portalId is provided, use it in the path; otherwise let the API pick the default
+    const path = portalId ? `/api/portals/${encodeURIComponent(portalId)}/capabilities` : "/api/portals/capabilities";
+    const data = await api({ path, query: portalId ? undefined : query });
+    return textResult(data);
   }
 );
 
@@ -181,28 +183,11 @@ server.tool(
     portalId: z.string().optional(),
   },
   async ({ objectType, portalId }) => {
-    return withPortal(portalId, async () => {
-      const properties = await propertyManager.list(objectType);
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            objectType,
-            count: properties.length,
-            properties: properties.map((p) => ({
-              name: p.name,
-              label: p.label,
-              type: p.type,
-              fieldType: p.fieldType,
-              groupName: p.groupName,
-              description: p.description,
-              hasUniqueValue: p.hasUniqueValue,
-              hubspotDefined: p.hubspotDefined,
-            })),
-          }, null, 2),
-        }],
-      };
+    const data = await api({
+      path: "/api/properties",
+      query: { objectType, portalId },
     });
+    return textResult(data);
   }
 );
 
@@ -225,14 +210,12 @@ server.tool(
     portalId: z.string().optional(),
   },
   async ({ objectType, name, label, type, fieldType, groupName, description, options, portalId }) => {
-    return withPortal(portalId, async () => {
-      const result = await propertyManager.create(objectType, {
-        name, label, type, fieldType, groupName, description, options,
-      });
-      return {
-        content: [{ type: "text", text: JSON.stringify({ success: true, property: result }, null, 2) }],
-      };
+    const data = await api({
+      method: "POST",
+      path: "/api/properties",
+      body: { objectType, name, label, type, fieldType, groupName, description, options, portalId },
     });
+    return textResult(data);
   }
 );
 
@@ -258,12 +241,12 @@ server.tool(
     portalId: z.string().optional(),
   },
   async ({ objectType, name, updates, portalId }) => {
-    return withPortal(portalId, async () => {
-      const result = await propertyManager.update(objectType, name, updates);
-      return {
-        content: [{ type: "text", text: JSON.stringify({ success: true, property: result }, null, 2) }],
-      };
+    const data = await api({
+      method: "PATCH",
+      path: `/api/properties/${encodeURIComponent(objectType)}/${encodeURIComponent(name)}`,
+      body: { updates, portalId },
     });
+    return textResult(data);
   }
 );
 
@@ -276,12 +259,12 @@ server.tool(
     portalId: z.string().optional(),
   },
   async ({ objectType, name, portalId }) => {
-    return withPortal(portalId, async () => {
-      await propertyManager.delete(objectType, name);
-      return {
-        content: [{ type: "text", text: JSON.stringify({ success: true, deleted: name }) }],
-      };
+    const data = await api({
+      method: "DELETE",
+      path: `/api/properties/${encodeURIComponent(objectType)}/${encodeURIComponent(name)}`,
+      query: { portalId },
     });
+    return textResult(data);
   }
 );
 
@@ -293,24 +276,11 @@ server.tool(
     portalId: z.string().optional(),
   },
   async ({ objectType, portalId }) => {
-    return withPortal(portalId, async () => {
-      const audit = await propertyManager.audit(objectType);
-      const deleteCandidates = audit.filter((a) => a.recommendation === "DELETE_CANDIDATE");
-      const reviewNeeded = audit.filter((a) => a.recommendation === "REVIEW");
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            objectType,
-            totalProperties: audit.length,
-            deleteCandidates: deleteCandidates.length,
-            reviewNeeded: reviewNeeded.length,
-            ok: audit.length - deleteCandidates.length - reviewNeeded.length,
-            details: audit,
-          }, null, 2),
-        }],
-      };
+    const data = await api({
+      path: "/api/properties/audit",
+      query: { objectType, portalId },
     });
+    return textResult(data);
   }
 );
 
@@ -326,12 +296,11 @@ server.tool(
     portalId: z.string().optional(),
   },
   async ({ objectType, portalId }) => {
-    return withPortal(portalId, async () => {
-      const pipelines = await pipelineManager.list(objectType);
-      return {
-        content: [{ type: "text", text: JSON.stringify({ objectType, pipelines }, null, 2) }],
-      };
+    const data = await api({
+      path: "/api/pipelines",
+      query: { objectType, portalId },
     });
+    return textResult(data);
   }
 );
 
@@ -349,12 +318,12 @@ server.tool(
     portalId: z.string().optional(),
   },
   async ({ objectType, label, stages, portalId }) => {
-    return withPortal(portalId, async () => {
-      const result = await pipelineManager.create(objectType, { label, stages });
-      return {
-        content: [{ type: "text", text: JSON.stringify({ success: true, pipeline: result }, null, 2) }],
-      };
+    const data = await api({
+      method: "POST",
+      path: "/api/pipelines",
+      body: { objectType, label, stages, portalId },
     });
+    return textResult(data);
   }
 );
 
@@ -366,12 +335,11 @@ server.tool(
     portalId: z.string().optional(),
   },
   async ({ objectType, portalId }) => {
-    return withPortal(portalId, async () => {
-      const audit = await pipelineManager.audit(objectType);
-      return {
-        content: [{ type: "text", text: JSON.stringify({ objectType, audit }, null, 2) }],
-      };
+    const data = await api({
+      path: "/api/pipelines/audit",
+      query: { objectType, portalId },
     });
+    return textResult(data);
   }
 );
 
@@ -389,12 +357,13 @@ server.tool(
     portalId: z.string().optional(),
   },
   async ({ objectType, id, properties, portalId }) => {
-    return withPortal(portalId, async () => {
-      const record = await apiClient.crm.get(objectType, id, properties);
-      return {
-        content: [{ type: "text", text: JSON.stringify(record, null, 2) }],
-      };
+    const query: Record<string, string | undefined> = { portalId };
+    if (properties?.length) query.properties = properties.join(",");
+    const data = await api({
+      path: `/api/records/${encodeURIComponent(objectType)}/${encodeURIComponent(id)}`,
+      query,
     });
+    return textResult(data);
   }
 );
 
@@ -413,20 +382,12 @@ server.tool(
     portalId: z.string().optional(),
   },
   async ({ objectType, filters, properties, portalId }) => {
-    return withPortal(portalId, async () => {
-      const allResults: unknown[] = [];
-      const gen = apiClient.crm.search(objectType, [{ filters }], properties);
-      for await (const page of gen) {
-        allResults.push(...page);
-        if (allResults.length >= 200) break; // Safety limit
-      }
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({ objectType, count: allResults.length, results: allResults }, null, 2),
-        }],
-      };
+    const data = await api({
+      method: "POST",
+      path: "/api/records/search",
+      body: { objectType, filters, properties, portalId },
     });
+    return textResult(data);
   }
 );
 
@@ -439,12 +400,12 @@ server.tool(
     portalId: z.string().optional(),
   },
   async ({ objectType, properties, portalId }) => {
-    return withPortal(portalId, async () => {
-      const record = await apiClient.crm.create(objectType, properties);
-      return {
-        content: [{ type: "text", text: JSON.stringify({ success: true, record }, null, 2) }],
-      };
+    const data = await api({
+      method: "POST",
+      path: "/api/records",
+      body: { objectType, properties, portalId },
     });
+    return textResult(data);
   }
 );
 
@@ -458,12 +419,12 @@ server.tool(
     portalId: z.string().optional(),
   },
   async ({ objectType, id, properties, portalId }) => {
-    return withPortal(portalId, async () => {
-      const record = await apiClient.crm.update(objectType, id, properties);
-      return {
-        content: [{ type: "text", text: JSON.stringify({ success: true, record }, null, 2) }],
-      };
+    const data = await api({
+      method: "PATCH",
+      path: `/api/records/${encodeURIComponent(objectType)}/${encodeURIComponent(id)}`,
+      body: { properties, portalId },
     });
+    return textResult(data);
   }
 );
 
@@ -477,19 +438,12 @@ server.tool(
     portalId: z.string().optional(),
   },
   async ({ objectType, records, idProperty, portalId }) => {
-    return withPortal(portalId, async () => {
-      const result = await apiClient.crm.batchUpsert(objectType, records, idProperty);
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            success: result.errors.length === 0,
-            created_or_updated: result.successes.length,
-            errors: result.errors,
-          }, null, 2),
-        }],
-      };
+    const data = await api({
+      method: "POST",
+      path: "/api/records/batch-upsert",
+      body: { objectType, records, idProperty, portalId },
     });
+    return textResult(data);
   }
 );
 
@@ -502,12 +456,11 @@ server.tool(
   "List all CRM lists (static and dynamic)",
   { portalId: z.string().optional() },
   async ({ portalId }) => {
-    return withPortal(portalId, async () => {
-      const lists = await listManager.list();
-      return {
-        content: [{ type: "text", text: JSON.stringify({ count: lists.length, lists }, null, 2) }],
-      };
+    const data = await api({
+      path: "/api/lists",
+      query: { portalId },
     });
+    return textResult(data);
   }
 );
 
@@ -522,17 +475,12 @@ server.tool(
     portalId: z.string().optional(),
   },
   async ({ name, objectTypeId, processingType, filterBranch, portalId }) => {
-    return withPortal(portalId, async () => {
-      const result = await listManager.create({
-        name,
-        objectTypeId: objectTypeId || "0-1",
-        processingType: processingType || "DYNAMIC",
-        filterBranch,
-      });
-      return {
-        content: [{ type: "text", text: JSON.stringify({ success: true, list: result }, null, 2) }],
-      };
+    const data = await api({
+      method: "POST",
+      path: "/api/lists",
+      body: { name, objectTypeId, processingType, filterBranch, portalId },
     });
+    return textResult(data);
   }
 );
 
@@ -545,20 +493,11 @@ server.tool(
   "List all automation workflows",
   { portalId: z.string().optional() },
   async ({ portalId }) => {
-    return withPortal(portalId, async () => {
-      const workflows = await workflowEngine.list();
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({ count: workflows.length, workflows: workflows.map((w: Record<string, unknown>) => ({
-            id: w.flowId || w.id,
-            name: w.name,
-            type: w.type,
-            isEnabled: w.isEnabled,
-          })) }, null, 2),
-        }],
-      };
+    const data = await api({
+      path: "/api/workflows",
+      query: { portalId },
     });
+    return textResult(data);
   }
 );
 
@@ -570,34 +509,13 @@ server.tool(
     portalId: z.string().optional(),
   },
   async ({ workflow, portalId }) => {
-    const id = getPortalId(portalId);
     const name = String(workflow.name || "Untitled Workflow");
-    const { saveDraft, findDraftConflicts } = await import("./lib/draft-store");
-
-    // Check existing drafts
-    const draftConflicts = findDraftConflicts(id, "workflow_draft", name);
-
-    // Check existing workflows in portal
-    const portalConflicts: { name: string; match: "exact" | "similar" }[] = [];
-    try {
-      const existing = await withPortal(id, () => workflowEngine.list());
-      const nameNorm = name.toLowerCase().trim();
-      for (const w of existing) {
-        const wName = (w.name || "").toLowerCase().trim();
-        if (wName === nameNorm) portalConflicts.push({ name: w.name || "", match: "exact" });
-        else if (wName.includes(nameNorm) || nameNorm.includes(wName)) portalConflicts.push({ name: w.name || "", match: "similar" });
-      }
-    } catch { /* portal may not be reachable — save draft anyway */ }
-
-    const draft = saveDraft(id, "workflow_draft", name, workflow as Record<string, unknown>);
-    return {
-      content: [{ type: "text", text: JSON.stringify({
-        success: true, draftId: draft.id, name,
-        message: "Draft saved. Deploy it from the Workflows page in the app.",
-        ...(draftConflicts.length > 0 && { warning_draft_duplicates: draftConflicts, warning: `Found ${draftConflicts.length} existing draft(s) with the same name.` }),
-        ...(portalConflicts.length > 0 && { warning_portal_duplicates: portalConflicts, warning_portal: `Found ${portalConflicts.length} existing workflow(s) in portal with matching name.` }),
-      }, null, 2) }],
-    };
+    const data = await api({
+      method: "POST",
+      path: "/api/workflows/drafts",
+      body: { name, spec: workflow, portalId },
+    });
+    return textResult(data);
   }
 );
 
@@ -609,17 +527,17 @@ server.tool(
     portalId: z.string().optional(),
   },
   async ({ workflow, portalId }) => {
-    return withPortal(portalId, async () => {
-      const result = await workflowEngine.deploy(workflow as never);
-      return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-      };
+    const data = await api({
+      method: "POST",
+      path: "/api/workflows/deploy",
+      body: { workflow, portalId },
     });
+    return textResult(data);
   }
 );
 
 // ---------------------------------------------------------------------------
-// Draft Tools — save specs locally, deploy later from app UI
+// Draft Tools — save specs to the server, deploy later from app UI
 // ---------------------------------------------------------------------------
 
 server.tool(
@@ -631,30 +549,13 @@ server.tool(
     portalId: z.string().optional(),
   },
   async ({ spec, name, portalId }) => {
-    const id = getPortalId(portalId);
-    const { saveDraft, findDraftConflicts } = await import("./lib/draft-store");
     const draftName = name || String(spec.label || spec.name || "Untitled Pipeline");
-
-    const draftConflicts = findDraftConflicts(id, "pipeline_draft", draftName, String(spec.label || ""));
-    const portalConflicts: { name: string; label?: string; match: "exact" | "similar" }[] = [];
-    try {
-      const objType = String(spec.objectType || "deals");
-      const existing = await withPortal(id, () => pipelineManager.list(objType as "deals" | "tickets"));
-      const labelNorm = (String(spec.label || draftName)).toLowerCase().trim();
-      for (const p of existing) {
-        const pLabel = (p.label || "").toLowerCase().trim();
-        if (pLabel === labelNorm) portalConflicts.push({ name: p.id || "", label: p.label || "", match: "exact" });
-        else if (pLabel.includes(labelNorm) || labelNorm.includes(pLabel)) portalConflicts.push({ name: p.id || "", label: p.label || "", match: "similar" });
-      }
-    } catch { /* portal may not be reachable */ }
-
-    const draft = saveDraft(id, "pipeline_draft", draftName, spec as Record<string, unknown>);
-    return { content: [{ type: "text", text: JSON.stringify({
-      success: true, draftId: draft.id, name: draftName,
-      message: "Draft saved. Deploy from Pipelines page.",
-      ...(draftConflicts.length > 0 && { warning_draft_duplicates: draftConflicts, warning: `Found ${draftConflicts.length} existing draft(s) with the same name.` }),
-      ...(portalConflicts.length > 0 && { warning_portal_duplicates: portalConflicts, warning_portal: `Found ${portalConflicts.length} existing pipeline(s) in portal with matching label.` }),
-    }, null, 2) }] };
+    const data = await api({
+      method: "POST",
+      path: "/api/pipelines/drafts",
+      body: { name: draftName, spec, portalId },
+    });
+    return textResult(data);
   }
 );
 
@@ -667,29 +568,13 @@ server.tool(
     portalId: z.string().optional(),
   },
   async ({ spec, name, portalId }) => {
-    const id = getPortalId(portalId);
-    const { saveDraft, findDraftConflicts } = await import("./lib/draft-store");
     const draftName = name || String(spec.label || spec.name || "Untitled Property");
-    const internalName = String(spec.name || "");
-
-    const draftConflicts = findDraftConflicts(id, "property_draft", draftName, internalName);
-    const portalConflicts: { name: string; label?: string; match: "exact" | "similar" }[] = [];
-    try {
-      const objType = String(spec.objectType || "contacts");
-      const existing = await withPortal(id, () => propertyManager.list(objType));
-      const nameNorm = internalName.toLowerCase().trim();
-      for (const p of existing) {
-        if (p.name.toLowerCase() === nameNorm) portalConflicts.push({ name: p.name, label: p.label, match: "exact" });
-      }
-    } catch { /* portal may not be reachable */ }
-
-    const draft = saveDraft(id, "property_draft", draftName, spec as Record<string, unknown>);
-    return { content: [{ type: "text", text: JSON.stringify({
-      success: true, draftId: draft.id, name: draftName,
-      message: "Draft saved. Deploy from Properties page.",
-      ...(draftConflicts.length > 0 && { warning_draft_duplicates: draftConflicts, warning: `Found ${draftConflicts.length} existing draft(s) with the same name.` }),
-      ...(portalConflicts.length > 0 && { warning_portal_duplicates: portalConflicts, warning_portal: `Property "${internalName}" already exists in portal on ${spec.objectType}. Deploying will fail — update the existing property instead.` }),
-    }, null, 2) }] };
+    const data = await api({
+      method: "POST",
+      path: "/api/properties/drafts",
+      body: { name: draftName, spec, portalId },
+    });
+    return textResult(data);
   }
 );
 
@@ -702,29 +587,13 @@ server.tool(
     portalId: z.string().optional(),
   },
   async ({ spec, name, portalId }) => {
-    const id = getPortalId(portalId);
-    const { saveDraft, findDraftConflicts } = await import("./lib/draft-store");
     const draftName = name || String(spec.name || "Untitled List");
-
-    const draftConflicts = findDraftConflicts(id, "list_draft", draftName, String(spec.name || ""));
-    const portalConflicts: { name: string; match: "exact" | "similar" }[] = [];
-    try {
-      const existing = await withPortal(id, () => listManager.list());
-      const nameNorm = draftName.toLowerCase().trim();
-      for (const l of existing) {
-        const lName = (l.name || "").toLowerCase().trim();
-        if (lName === nameNorm) portalConflicts.push({ name: l.name || "", match: "exact" });
-        else if (lName.includes(nameNorm) || nameNorm.includes(lName)) portalConflicts.push({ name: l.name || "", match: "similar" });
-      }
-    } catch { /* portal may not be reachable */ }
-
-    const draft = saveDraft(id, "list_draft", draftName, spec as Record<string, unknown>);
-    return { content: [{ type: "text", text: JSON.stringify({
-      success: true, draftId: draft.id, name: draftName,
-      message: "Draft saved. Deploy from Lists page.",
-      ...(draftConflicts.length > 0 && { warning_draft_duplicates: draftConflicts, warning: `Found ${draftConflicts.length} existing draft(s) with the same name.` }),
-      ...(portalConflicts.length > 0 && { warning_portal_duplicates: portalConflicts, warning_portal: `Found ${portalConflicts.length} existing list(s) in portal with matching name. List names must be unique — deploying will fail.` }),
-    }, null, 2) }] };
+    const data = await api({
+      method: "POST",
+      path: "/api/lists/drafts",
+      body: { name: draftName, spec, portalId },
+    });
+    return textResult(data);
   }
 );
 
@@ -737,16 +606,13 @@ server.tool(
     portalId: z.string().optional(),
   },
   async ({ spec, name, portalId }) => {
-    const id = getPortalId(portalId);
-    const { saveDraft, findDraftConflicts } = await import("./lib/draft-store");
     const draftName = name || String(spec.name || spec.id || "Untitled Template");
-    const draftConflicts = findDraftConflicts(id, "template_draft", draftName);
-    const draft = saveDraft(id, "template_draft", draftName, spec as Record<string, unknown>);
-    return { content: [{ type: "text", text: JSON.stringify({
-      success: true, draftId: draft.id, name: draftName,
-      message: "Draft saved. Deploy from Templates page.",
-      ...(draftConflicts.length > 0 && { warning_draft_duplicates: draftConflicts, warning: `Found ${draftConflicts.length} existing draft(s) with the same name.` }),
-    }, null, 2) }] };
+    const data = await api({
+      method: "POST",
+      path: "/api/templates/drafts",
+      body: { name: draftName, spec, portalId },
+    });
+    return textResult(data);
   }
 );
 
@@ -759,16 +625,13 @@ server.tool(
     portalId: z.string().optional(),
   },
   async ({ spec, name, portalId }) => {
-    const id = getPortalId(portalId);
-    const { saveDraft, findDraftConflicts } = await import("./lib/draft-store");
     const draftName = name || String(spec.description || spec.name || "Untitled Script");
-    const draftConflicts = findDraftConflicts(id, "bulk_draft", draftName);
-    const draft = saveDraft(id, "bulk_draft", draftName, spec as Record<string, unknown>);
-    return { content: [{ type: "text", text: JSON.stringify({
-      success: true, draftId: draft.id, name: draftName,
-      message: "Draft saved. Deploy from Bulk Operations page.",
-      ...(draftConflicts.length > 0 && { warning_draft_duplicates: draftConflicts, warning: `Found ${draftConflicts.length} existing draft(s) with the same name.` }),
-    }, null, 2) }] };
+    const data = await api({
+      method: "POST",
+      path: "/api/scripts/drafts",
+      body: { name: draftName, spec, portalId },
+    });
+    return textResult(data);
   }
 );
 
@@ -781,16 +644,13 @@ server.tool(
     portalId: z.string().optional(),
   },
   async ({ spec, name, portalId }) => {
-    const id = getPortalId(portalId);
-    const { saveDraft, findDraftConflicts } = await import("./lib/draft-store");
     const draftName = name || String(spec.name || "Untitled Clone Config");
-    const draftConflicts = findDraftConflicts(id, "clone_draft", draftName);
-    const draft = saveDraft(id, "clone_draft", draftName, spec as Record<string, unknown>);
-    return { content: [{ type: "text", text: JSON.stringify({
-      success: true, draftId: draft.id, name: draftName,
-      message: "Draft saved. Deploy from Clone page.",
-      ...(draftConflicts.length > 0 && { warning_draft_duplicates: draftConflicts, warning: `Found ${draftConflicts.length} existing draft(s) with the same name.` }),
-    }, null, 2) }] };
+    const data = await api({
+      method: "POST",
+      path: "/api/clone/drafts",
+      body: { name: draftName, spec, portalId },
+    });
+    return textResult(data);
   }
 );
 
@@ -803,16 +663,13 @@ server.tool(
     portalId: z.string().optional(),
   },
   async ({ spec, name, portalId }) => {
-    const id = getPortalId(portalId);
-    const { saveDraft, findDraftConflicts } = await import("./lib/draft-store");
     const draftName = name || String(spec.name || "Untitled Custom Object");
-    const draftConflicts = findDraftConflicts(id, "custom_object_draft", draftName);
-    const draft = saveDraft(id, "custom_object_draft", draftName, spec as Record<string, unknown>);
-    return { content: [{ type: "text", text: JSON.stringify({
-      success: true, draftId: draft.id, name: draftName,
-      message: "Draft saved. Deploy from Custom Objects section.",
-      ...(draftConflicts.length > 0 && { warning_draft_duplicates: draftConflicts, warning: `Found ${draftConflicts.length} existing draft(s) with the same name.` }),
-    }, null, 2) }] };
+    const data = await api({
+      method: "POST",
+      path: "/api/custom-objects/drafts",
+      body: { name: draftName, spec, portalId },
+    });
+    return textResult(data);
   }
 );
 
@@ -827,10 +684,12 @@ server.tool(
     resources: z.record(z.unknown()).describe("TemplateResources object with propertyGroups, properties, pipelines, workflows, lists, customObjects, associations"),
   },
   async ({ resources }) => {
-    const result = validateConfig(resources as never);
-    return {
-      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-    };
+    const data = await api({
+      method: "POST",
+      path: "/api/config/validate",
+      body: { resources },
+    });
+    return textResult(data);
   }
 );
 
@@ -843,11 +702,12 @@ server.tool(
     portalId: z.string().optional(),
   },
   async ({ resources, dryRun, portalId }) => {
-    const id = getPortalId(portalId);
-    const report = await executeConfig(id, resources as never, { dryRun });
-    return {
-      content: [{ type: "text", text: JSON.stringify(report, null, 2) }],
-    };
+    const data = await api({
+      method: "POST",
+      path: "/api/config/execute",
+      body: { resources, portalId, dryRun },
+    });
+    return textResult(data);
   }
 );
 
@@ -860,11 +720,12 @@ server.tool(
     portalId: z.string().optional(),
   },
   async ({ templateId, dryRun, portalId }) => {
-    const id = getPortalId(portalId);
-    const report = await installTemplate(templateId, id, { dryRun });
-    return {
-      content: [{ type: "text", text: JSON.stringify(report, null, 2) }],
-    };
+    const data = await api({
+      method: "POST",
+      path: "/api/templates/install",
+      body: { templateId, portalId, dryRun },
+    });
+    return textResult(data);
   }
 );
 
@@ -882,14 +743,12 @@ server.tool(
     includeLists: z.boolean().optional().describe("Default: true"),
   },
   async ({ portalId, includeProperties, includePipelines, includeLists }) => {
-    const config = await extractPortalConfig(portalId, {
-      properties: includeProperties ?? true,
-      pipelines: includePipelines ?? true,
-      lists: includeLists ?? true,
+    const data = await api({
+      method: "POST",
+      path: "/api/clone/extract",
+      body: { portalId, includeProperties, includePipelines, includeLists },
     });
-    return {
-      content: [{ type: "text", text: JSON.stringify(config, null, 2) }],
-    };
+    return textResult(data);
   }
 );
 
@@ -902,10 +761,12 @@ server.tool(
     dryRun: z.boolean().optional().describe("Default: true — preview without applying"),
   },
   async ({ sourcePortalId, targetPortalId, dryRun }) => {
-    const result = await clonePortal(sourcePortalId, targetPortalId, {}, dryRun ?? true);
-    return {
-      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-    };
+    const data = await api({
+      method: "POST",
+      path: "/api/clone/execute",
+      body: { sourcePortalId, targetPortalId, dryRun: dryRun ?? true },
+    });
+    return textResult(data);
   }
 );
 
@@ -921,12 +782,11 @@ server.tool(
     portalId: z.string().optional(),
   },
   async ({ limit, portalId }) => {
-    const id = getPortalId(portalId);
-    const allEntries = await changeLogger.getLog(id);
-    const entries = allEntries.slice(0, limit || 50);
-    return {
-      content: [{ type: "text", text: JSON.stringify({ count: entries.length, entries }, null, 2) }],
-    };
+    const data = await api({
+      path: "/api/activity",
+      query: { portalId, limit },
+    });
+    return textResult(data);
   }
 );
 
@@ -945,12 +805,12 @@ server.tool(
     portalId: z.string().optional(),
   },
   async ({ fromType, fromId, toType, toId, portalId }) => {
-    return withPortal(portalId, async () => {
-      const result = await apiClient.associations.create(fromType, fromId, toType, toId);
-      return {
-        content: [{ type: "text", text: JSON.stringify({ success: true, result: result.data }, null, 2) }],
-      };
+    const data = await api({
+      method: "POST",
+      path: "/api/records/associations",
+      body: { fromType, fromId, toType, toId, portalId },
     });
+    return textResult(data);
   }
 );
 
@@ -967,19 +827,12 @@ server.tool(
     portalId: z.string().optional(),
   },
   async ({ fromType, toType, pairs, portalId }) => {
-    return withPortal(portalId, async () => {
-      const result = await apiClient.associations.batchCreate(fromType, toType, pairs);
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            success: result.errors.length === 0,
-            created: result.successes.length,
-            errors: result.errors,
-          }, null, 2),
-        }],
-      };
+    const data = await api({
+      method: "POST",
+      path: "/api/records/associations/batch",
+      body: { fromType, toType, pairs, portalId },
     });
+    return textResult(data);
   }
 );
 
@@ -998,83 +851,11 @@ const portIdx = args.indexOf("--port");
 const HTTP_PORT = portIdx !== -1 ? Number(args[portIdx + 1]) : Number(process.env.MCP_PORT) || 8808;
 
 // ---------------------------------------------------------------------------
-// Auth check — validates Bearer token against database-stored MCP API keys
-// Keys are managed via the UI at /settings → MCP Connections
-// ---------------------------------------------------------------------------
-
-function checkAuth(req: IncomingMessage, res: ServerResponse): boolean {
-  // Check if any keys or OAuth clients exist
-  const allKeys = mcpKeysStore.list();
-  const allClients = mcpOAuthStore.listClients();
-  const hasKeys = allKeys.some((k) => k.is_active);
-  const hasClients = allClients.some((c) => c.is_active);
-
-  // If nothing created yet, allow access (first-time setup)
-  if (!hasKeys && !hasClients) return true;
-
-  // Build WWW-Authenticate header for 401 responses (RFC 9728)
-  const baseUrl = getPublicBaseUrl(req);
-  const wwwAuth = `Bearer resource_metadata="${baseUrl}/.well-known/oauth-protected-resource"`;
-
-  const authHeader = req.headers["authorization"];
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    res.writeHead(401, {
-      "Content-Type": "application/json",
-      "WWW-Authenticate": wwwAuth,
-    });
-    res.end(JSON.stringify({
-      error: "Unauthorized",
-      hint: "Create an API key or OAuth client in Settings → MCP Connections",
-    }));
-    return false;
-  }
-
-  const token = authHeader.slice(7);
-
-  // 1. Check against MCP API keys (mcp_xxx)
-  const validKey = mcpKeysStore.validate(token);
-  if (validKey) {
-    console.error(`[Auth] API key: ${validKey.label} (${validKey.platform})`);
-    return true;
-  }
-
-  // 2. Check against OAuth access tokens (mct_xxx)
-  const validClient = mcpOAuthStore.validateToken(token);
-  if (validClient) {
-    console.error(`[Auth] OAuth: ${validClient.label} (${validClient.platform})`);
-    return true;
-  }
-
-  res.writeHead(401, {
-    "Content-Type": "application/json",
-    "WWW-Authenticate": wwwAuth,
-  });
-  res.end(JSON.stringify({ error: "invalid_token", error_description: "Invalid or revoked API key / token" }));
-  return false;
-}
-
-// ---------------------------------------------------------------------------
-// Helper: resolve the public base URL (tunnel or request host)
-// ---------------------------------------------------------------------------
-
-function getPublicBaseUrl(req: IncomingMessage): string {
-  // Prefer the tunnel URL if available
-  const tunnelUrl = getCurrentTunnelUrl();
-  if (tunnelUrl) return tunnelUrl;
-
-  // Fall back to request headers
-  const proto = (req.headers["x-forwarded-proto"] as string) || "http";
-  const host = req.headers["host"] || `localhost:${HTTP_PORT}`;
-  return `${proto}://${host}`;
-}
-
-// ---------------------------------------------------------------------------
 // CORS helper
 // ---------------------------------------------------------------------------
 
 function setCorsHeaders(req: IncomingMessage, res: ServerResponse): void {
   const origin = req.headers["origin"] || "";
-  // Allow claude.ai, claude.com, and any origin (for local dev)
   if (origin.includes("claude.ai") || origin.includes("claude.com")) {
     res.setHeader("Access-Control-Allow-Origin", origin);
     res.setHeader("Access-Control-Allow-Credentials", "true");
@@ -1086,21 +867,21 @@ function setCorsHeaders(req: IncomingMessage, res: ServerResponse): void {
   res.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id");
 }
 
-
 // ---------------------------------------------------------------------------
 // Start — STDIO or HTTP+SSE
 // ---------------------------------------------------------------------------
 
 async function main() {
+  process.stderr.write(`[mcp-server] Proxying to ${APP_BASE_URL}\n`);
+
   if (!httpMode) {
-    // ── STDIO mode (Claude Code, local clients) ──────────────────────────
+    // -- STDIO mode (Claude Code, local clients) --
     const transport = new StdioServerTransport();
     await server.connect(transport);
     return;
   }
 
-  // ── HTTP mode (ChatGPT, remote clients) ──────────────────────────────
-  // Stores active transports by session ID
+  // -- HTTP mode (ChatGPT, remote clients) --
   const transports: Record<string, SSEServerTransport | StreamableHTTPServerTransport> = {};
 
   const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse) => {
@@ -1109,8 +890,7 @@ async function main() {
 
     setCorsHeaders(req, res);
 
-    // Log every request for debugging
-    console.error(`[HTTP] ${req.method} ${pathname}${url.search || ""} (${req.headers["user-agent"]?.slice(0, 40) || "no-ua"})`);
+    console.error(`[HTTP] ${req.method} ${pathname}${url.search || ""}`);
 
     // Preflight
     if (req.method === "OPTIONS") {
@@ -1126,239 +906,15 @@ async function main() {
         status: "ok",
         server: "hubspot-operator-mcp",
         version: "1.0.0",
+        mode: "proxy",
+        target: APP_BASE_URL,
         activeSessions: Object.keys(transports).length,
-        tunnelUrl: getCurrentTunnelUrl(),
       }));
       return;
     }
 
-    // ── OAuth 2.1 Endpoints ────────────────────────────────────────────
-
-    // Protected Resource Metadata: RFC 9728 (required by MCP June 2025 spec)
-    if (pathname === "/.well-known/oauth-protected-resource" && req.method === "GET") {
-      console.error(`[OAuth] Protected Resource Metadata request from ${req.headers["user-agent"] || "unknown"}`);
-      const baseUrl = getPublicBaseUrl(req);
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({
-        resource: baseUrl,
-        authorization_servers: [baseUrl],
-        scopes_supported: ["mcp"],
-        bearer_methods_supported: ["header"],
-      }));
-      return;
-    }
-
-    // Discovery: RFC 8414
-    if (pathname === "/.well-known/oauth-authorization-server" && req.method === "GET") {
-      console.error(`[OAuth] Discovery request from ${req.headers["user-agent"] || "unknown"}`);
-      const baseUrl = getPublicBaseUrl(req);
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({
-        issuer: baseUrl,
-        authorization_endpoint: `${baseUrl}/authorize`,
-        token_endpoint: `${baseUrl}/token`,
-        registration_endpoint: `${baseUrl}/register`,
-        response_types_supported: ["code"],
-        grant_types_supported: ["authorization_code", "refresh_token"],
-        code_challenge_methods_supported: ["S256"],
-        token_endpoint_auth_methods_supported: ["client_secret_post", "client_secret_basic"],
-        scopes_supported: ["mcp"],
-      }));
-      return;
-    }
-
-    // Dynamic Client Registration (RFC 7591)
-    if (pathname === "/register" && req.method === "POST") {
-      try {
-        const body = await readBody(req) as Record<string, unknown>;
-        console.error(`[OAuth] Registration request:`, JSON.stringify(body));
-        const clientName = (body.client_name as string) || "Dynamic Client";
-        const redirectUris = (body.redirect_uris as string[]) || [];
-        const grantTypes = (body.grant_types as string[]) || ["authorization_code"];
-
-        // Determine platform from client name
-        const platform = clientName.toLowerCase().includes("claude") ? "claude_desktop" : "other";
-
-        // Create a new client for dynamic registration
-        const client = mcpOAuthStore.createClient(clientName, platform);
-
-        // Accept whatever redirect_uris the client specifies (Claude uses claude.ai callback)
-        const effectiveRedirectUris = redirectUris.length > 0 ? redirectUris : client.redirect_uris;
-
-        res.writeHead(201, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({
-          client_id: client.client_id,
-          client_secret: client.client_secret,
-          client_name: clientName,
-          redirect_uris: effectiveRedirectUris,
-          grant_types: grantTypes,
-          response_types: ["code"],
-          token_endpoint_auth_method: "client_secret_post",
-        }));
-        console.error(`[OAuth] Client registered: ${client.client_id} (${clientName}) redirects=${JSON.stringify(effectiveRedirectUris)}`);
-      } catch (err) {
-        console.error(`[OAuth] Registration error:`, (err as Error).message);
-        res.writeHead(400, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "invalid_request" }));
-      }
-      return;
-    }
-
-    // Authorization endpoint
-    if (pathname === "/authorize" && (req.method === "GET" || req.method === "POST")) {
-      console.error(`[OAuth] Authorization request (${req.method}): ${url.search}`);
-
-      // Support both GET params and POST body
-      let clientId = url.searchParams.get("client_id");
-      let responseType = url.searchParams.get("response_type");
-      let redirectUri = url.searchParams.get("redirect_uri") || "";
-      let state = url.searchParams.get("state") || "";
-      let codeChallenge = url.searchParams.get("code_challenge") || "";
-      let codeChallengeMethod = url.searchParams.get("code_challenge_method") || "S256";
-      let scope = url.searchParams.get("scope") || "";
-      let resource = url.searchParams.get("resource") || "";
-
-      // If POST, parse the body too
-      if (req.method === "POST") {
-        const body = await readBody(req) as Record<string, string>;
-        clientId = clientId || body.client_id || "";
-        responseType = responseType || body.response_type || "";
-        redirectUri = redirectUri || body.redirect_uri || "";
-        state = state || body.state || "";
-        codeChallenge = codeChallenge || body.code_challenge || "";
-        codeChallengeMethod = codeChallengeMethod || body.code_challenge_method || "S256";
-        scope = scope || body.scope || "";
-        resource = resource || body.resource || "";
-      }
-
-      console.error(`[OAuth] Auth params: client_id=${clientId}, response_type=${responseType}, redirect_uri=${redirectUri}, has_challenge=${!!codeChallenge}, scope=${scope}, resource=${resource}`);
-
-      if (!clientId || responseType !== "code" || !codeChallenge) {
-        console.error(`[OAuth] Auth error: missing params — client_id=${!!clientId}, response_type=${responseType}, code_challenge=${!!codeChallenge}`);
-        res.writeHead(400, { "Content-Type": "text/html" });
-        res.end("<h1>Bad Request</h1><p>Missing required OAuth parameters (client_id, response_type=code, code_challenge).</p>");
-        return;
-      }
-
-      const client = mcpOAuthStore.getClientById(clientId);
-      if (!client) {
-        res.writeHead(400, { "Content-Type": "text/html" });
-        res.end("<h1>Unknown Client</h1><p>No OAuth client found with this client_id. Create one in Settings → MCP Connections.</p>");
-        return;
-      }
-
-      // Auto-approve: since the user already created and controls the OAuth client
-      // from the Settings UI, we auto-approve the authorization.
-      // This is safe because:
-      // 1. The client_id+client_secret were created by the user
-      // 2. PKCE ensures the code can only be exchanged by the original requester
-      const code = mcpOAuthStore.createAuthCode(clientId, codeChallenge, codeChallengeMethod, redirectUri);
-
-      // Redirect back with the code
-      // Note: redirect_uri may use custom schemes (e.g. claude://callback)
-      // which NodeURL can't parse, so we build the redirect manually
-      const separator = redirectUri.includes("?") ? "&" : "?";
-      let redirectLocation = `${redirectUri}${separator}code=${encodeURIComponent(code)}`;
-      if (state) redirectLocation += `&state=${encodeURIComponent(state)}`;
-
-      res.writeHead(302, { Location: redirectLocation });
-      res.end();
-      console.error(`[OAuth] Authorization code issued for: ${client.label} → ${redirectUri}`);
-      return;
-    }
-
-    // Token endpoint
-    if (pathname === "/token" && req.method === "POST") {
-      try {
-        const body = await readBody(req) as Record<string, string>;
-
-        // Extract client credentials from Basic auth header OR body
-        let clientId = body.client_id || "";
-        let clientSecret = body.client_secret || "";
-
-        const authHeader = req.headers["authorization"];
-        if (authHeader && authHeader.startsWith("Basic ")) {
-          const decoded = Buffer.from(authHeader.slice(6), "base64").toString("utf-8");
-          const colonIdx = decoded.indexOf(":");
-          if (colonIdx > 0) {
-            clientId = decodeURIComponent(decoded.slice(0, colonIdx));
-            clientSecret = decodeURIComponent(decoded.slice(colonIdx + 1));
-          }
-        }
-
-        const grantType = body.grant_type;
-        const code = body.code;
-        const codeVerifier = body.code_verifier;
-        const redirectUri = body.redirect_uri || "";
-        const resource = body.resource || "";
-
-        console.error(`[OAuth] Token request: grant_type=${grantType}, client_id=${clientId}, has_code=${!!code}, has_verifier=${!!codeVerifier}, has_secret=${!!clientSecret}, resource=${resource}, auth_method=${authHeader ? (authHeader.startsWith("Basic") ? "basic" : "bearer") : "body"}, content-type=${req.headers["content-type"]}`);
-
-        if (grantType !== "authorization_code" && grantType !== "refresh_token") {
-          console.error(`[OAuth] Token error: unsupported_grant_type (${grantType})`);
-          res.writeHead(400, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "unsupported_grant_type" }));
-          return;
-        }
-
-        // Handle refresh_token grant
-        if (grantType === "refresh_token") {
-          // We don't issue refresh tokens yet — return error
-          console.error(`[OAuth] Token error: refresh_token not yet supported`);
-          res.writeHead(400, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "invalid_grant", error_description: "Refresh tokens not supported yet" }));
-          return;
-        }
-
-        if (!code || !clientId || !codeVerifier) {
-          console.error(`[OAuth] Token error: missing params — code=${!!code}, clientId=${!!clientId}, codeVerifier=${!!codeVerifier}`);
-          res.writeHead(400, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "invalid_request", error_description: "Missing code, client_id, or code_verifier" }));
-          return;
-        }
-
-        // Validate client credentials if provided
-        if (clientSecret) {
-          const valid = mcpOAuthStore.validateClient(clientId, clientSecret);
-          if (!valid) {
-            console.error(`[OAuth] Token error: invalid_client (secret mismatch for ${clientId})`);
-            res.writeHead(401, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ error: "invalid_client" }));
-            return;
-          }
-        }
-
-        // Exchange code for token (validates PKCE)
-        const result = mcpOAuthStore.exchangeCode(code, clientId, codeVerifier, redirectUri);
-        if (!result) {
-          console.error(`[OAuth] Token error: invalid_grant (code exchange failed for ${clientId})`);
-          res.writeHead(400, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "invalid_grant", error_description: "Invalid, expired, or already-used authorization code, or PKCE mismatch" }));
-          return;
-        }
-
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({
-          access_token: result.access_token,
-          token_type: "Bearer",
-          expires_in: result.expires_in,
-          scope: "mcp",
-        }));
-
-        const client = mcpOAuthStore.getClientById(clientId);
-        console.error(`[OAuth] Token issued for: ${client?.label || clientId}`);
-      } catch (err) {
-        console.error(`[OAuth] Token error: exception —`, (err as Error).message);
-        res.writeHead(400, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "invalid_request" }));
-      }
-      return;
-    }
-
-    // ── Streamable HTTP endpoint: /mcp (protocol version 2025-11-25) ───
+    // -- Streamable HTTP endpoint: /mcp --
     if (pathname === "/mcp") {
-      if (!checkAuth(req, res)) return;
-
       try {
         const sessionId = req.headers["mcp-session-id"] as string | undefined;
         let transport: StreamableHTTPServerTransport | undefined;
@@ -1373,7 +929,6 @@ async function main() {
             return;
           }
         } else if (!sessionId && req.method === "POST") {
-          // Read body for initialization check
           const body = await readBody(req);
           if (isInitializeRequest(body)) {
             transport = new StreamableHTTPServerTransport({
@@ -1389,7 +944,6 @@ async function main() {
             const newServer = createMcpServerInstance();
             await newServer.connect(transport);
           }
-          // Handle the request (pass parsed body)
           if (transport) {
             await transport.handleRequest(req, res, body);
             return;
@@ -1402,7 +956,7 @@ async function main() {
           res.writeHead(400, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ jsonrpc: "2.0", error: { code: -32000, message: "No valid session" }, id: null }));
         }
-      } catch (err) {
+      } catch {
         if (!res.headersSent) {
           res.writeHead(500, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ jsonrpc: "2.0", error: { code: -32603, message: "Internal server error" }, id: null }));
@@ -1411,10 +965,8 @@ async function main() {
       return;
     }
 
-    // ── SSE endpoint: /sse (protocol version 2024-11-05 — ChatGPT) ─────
+    // -- SSE endpoint: /sse --
     if (pathname === "/sse" && req.method === "GET") {
-      if (!checkAuth(req, res)) return;
-
       const transport = new SSEServerTransport("/messages", res);
       transports[transport.sessionId] = transport;
       res.on("close", () => { delete transports[transport.sessionId]; });
@@ -1424,10 +976,8 @@ async function main() {
       return;
     }
 
-    // ── SSE message endpoint: /messages (POST) ─────────────────────────
+    // -- SSE message endpoint: /messages --
     if (pathname === "/messages" && req.method === "POST") {
-      if (!checkAuth(req, res)) return;
-
       const sessionId = url.searchParams.get("sessionId");
       if (!sessionId || !transports[sessionId]) {
         res.writeHead(400, { "Content-Type": "application/json" });
@@ -1445,78 +995,52 @@ async function main() {
       return;
     }
 
-    // ── Root endpoint — server info ──────────────────────────────────
+    // -- Root endpoint --
     if (pathname === "/" && req.method === "GET") {
-      const baseUrl = getPublicBaseUrl(req);
+      const proto = (req.headers["x-forwarded-proto"] as string) || "http";
+      const host = req.headers["host"] || `localhost:${HTTP_PORT}`;
+      const baseUrl = `${proto}://${host}`;
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({
         name: "hubspot-operator-mcp",
         version: "1.0.0",
+        mode: "proxy",
+        target: APP_BASE_URL,
         mcp: {
           sse: `${baseUrl}/sse`,
           streamable: `${baseUrl}/mcp`,
-          oauth_protected_resource: `${baseUrl}/.well-known/oauth-protected-resource`,
-          oauth_discovery: `${baseUrl}/.well-known/oauth-authorization-server`,
         },
       }));
       return;
     }
 
-    // ── 404 ────────────────────────────────────────────────────────────
+    // -- 404 --
     console.error(`[404] ${req.method} ${pathname}`);
     res.writeHead(404, { "Content-Type": "application/json" });
     res.end(JSON.stringify({
       error: "Not found",
       endpoints: {
-        "/.well-known/oauth-protected-resource": "GET — Protected Resource Metadata (RFC 9728)",
-        "/.well-known/oauth-authorization-server": "GET — OAuth discovery (RFC 8414)",
-        "/register": "POST — Dynamic client registration (RFC 7591)",
-        "/authorize": "GET — OAuth authorization",
-        "/token": "POST — OAuth token exchange",
-        "/sse": "GET — SSE stream (ChatGPT / older MCP clients)",
-        "/mcp": "POST — Streamable HTTP (newer MCP clients)",
-        "/messages": "POST — SSE message endpoint (paired with /sse)",
+        "/sse": "GET — SSE stream",
+        "/mcp": "POST — Streamable HTTP",
+        "/messages": "POST — SSE message endpoint",
         "/health": "GET — Health check",
       },
     }));
   });
 
-  httpServer.listen(HTTP_PORT, async () => {
-    console.error(`\n🔌 HubSpot Operator MCP Server (HTTP mode)`);
-    console.error(`   Port:       ${HTTP_PORT}`);
-    const keyCount = mcpKeysStore.list().filter(k => k.is_active).length;
-    const clientCount = mcpOAuthStore.listClients().filter(c => c.is_active).length;
-    console.error(`   Auth:       ${keyCount} API key(s), ${clientCount} OAuth client(s)`);
-    console.error(`\n   Local Endpoints:`);
-    console.error(`     SSE (ChatGPT):      http://localhost:${HTTP_PORT}/sse`);
-    console.error(`     Streamable HTTP:    http://localhost:${HTTP_PORT}/mcp`);
-    console.error(`     OAuth Discovery:    http://localhost:${HTTP_PORT}/.well-known/oauth-authorization-server`);
-    console.error(`     Health:             http://localhost:${HTTP_PORT}/health`);
-
-    // Auto-start Cloudflare tunnel
-    const skipTunnel = args.includes("--no-tunnel");
-    if (!skipTunnel) {
-      console.error(`\n   🌐 Starting Cloudflare tunnel...`);
-      try {
-        const tunnelUrl = await startTunnel(HTTP_PORT);
-        console.error(`   ✅ Tunnel ready: ${tunnelUrl}`);
-        console.error(`\n   Public Endpoints:`);
-        console.error(`     MCP Server URL:     ${tunnelUrl}/sse`);
-        console.error(`     OAuth Discovery:    ${tunnelUrl}/.well-known/oauth-authorization-server`);
-        console.error(`     Health:             ${tunnelUrl}/health`);
-      } catch (err) {
-        console.error(`   ⚠️  Tunnel failed: ${(err as Error).message}`);
-        console.error(`   Continuing without tunnel — use --no-tunnel to suppress this.`);
-      }
-    }
-
-    console.error(`\n   Manage connections: http://localhost:3000/settings (MCP Connections tab)\n`);
+  httpServer.listen(HTTP_PORT, () => {
+    console.error(`\nHubSpot Operator MCP Server (HTTP proxy mode)`);
+    console.error(`  Port:   ${HTTP_PORT}`);
+    console.error(`  Target: ${APP_BASE_URL}`);
+    console.error(`\n  Endpoints:`);
+    console.error(`    SSE:              http://localhost:${HTTP_PORT}/sse`);
+    console.error(`    Streamable HTTP:  http://localhost:${HTTP_PORT}/mcp`);
+    console.error(`    Health:           http://localhost:${HTTP_PORT}/health\n`);
   });
 
   // Graceful shutdown
   process.on("SIGINT", async () => {
     console.error("\nShutting down...");
-    stopTunnel();
     for (const sid of Object.keys(transports)) {
       try { await transports[sid].close(); } catch {}
       delete transports[sid];
@@ -1538,10 +1062,7 @@ function readBody(req: IncomingMessage): Promise<unknown> {
       try {
         const raw = Buffer.concat(chunks).toString("utf-8");
         if (!raw) { resolve(undefined); return; }
-
         const contentType = req.headers["content-type"] || "";
-
-        // Handle application/x-www-form-urlencoded (OAuth token requests)
         if (contentType.includes("application/x-www-form-urlencoded")) {
           const params = new URLSearchParams(raw);
           const obj: Record<string, string> = {};
@@ -1549,8 +1070,6 @@ function readBody(req: IncomingMessage): Promise<unknown> {
           resolve(obj);
           return;
         }
-
-        // Default: JSON
         resolve(JSON.parse(raw));
       } catch (err) {
         reject(err);
@@ -1565,12 +1084,6 @@ function readBody(req: IncomingMessage): Promise<unknown> {
 // ---------------------------------------------------------------------------
 
 function createMcpServerInstance(): McpServer {
-  // In HTTP mode, each SSE/Streamable session gets its own McpServer instance
-  // but they all share the same business logic (authManager, apiClient, etc.)
-  // For simplicity, we reuse the global `server` for stdio mode
-  // and create fresh instances for HTTP sessions.
-  //
-  // The tool registrations are identical — we call registerTools() on new instances.
   const s = new McpServer({ name: "hubspot-operator", version: "1.0.0" });
   registerTools(s);
   return s;
