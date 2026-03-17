@@ -30,33 +30,43 @@ export function AppSettingsForm() {
   return (
     <div className="card stack">
       <h3>App Settings</h3>
-      <label>Default model for routing</label>
-      <select className="select" value={settings.routingModel} onChange={(e) => save({ routingModel: e.target.value as AppSettings["routingModel"] }).catch(() => undefined)}>
-        <option value="haiku">Haiku (recommended)</option>
-        <option value="sonnet">Sonnet</option>
-        <option value="opus">Opus</option>
-      </select>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        <div>
+          <label className="field-label">Routing Model</label>
+          <select className="input" value={settings.routingModel} onChange={(e) => save({ routingModel: e.target.value as AppSettings["routingModel"] }).catch(() => undefined)}>
+            <option value="haiku">Haiku (recommended)</option>
+            <option value="sonnet">Sonnet</option>
+            <option value="opus">Opus</option>
+          </select>
+        </div>
+        <div>
+          <label className="field-label">Generation Model</label>
+          <select className="input" value={settings.generationModel} onChange={(e) => save({ generationModel: e.target.value as AppSettings["generationModel"] }).catch(() => undefined)}>
+            <option value="sonnet">Sonnet (recommended)</option>
+            <option value="haiku">Haiku</option>
+            <option value="opus">Opus</option>
+          </select>
+        </div>
+      </div>
 
-      <label>Default model for generation</label>
-      <select className="select" value={settings.generationModel} onChange={(e) => save({ generationModel: e.target.value as AppSettings["generationModel"] }).catch(() => undefined)}>
-        <option value="sonnet">Sonnet (recommended)</option>
-        <option value="haiku">Haiku</option>
-        <option value="opus">Opus</option>
-      </select>
-
-      <label>
+      <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 13 }}>
         <input type="checkbox" checked={settings.promptCaching} onChange={(e) => save({ promptCaching: e.target.checked }).catch(() => undefined)} />
-        Prompt caching
+        Enable prompt caching
       </label>
 
-      <label>Monthly budget alert threshold</label>
-      <input
-        className="input"
-        type="number"
-        value={settings.monthlySpendLimit}
-        onChange={(e) => setSettings((prev) => (prev ? { ...prev, monthlySpendLimit: Number(e.target.value) } : prev))}
-      />
-      <button className="btn btn-primary" onClick={() => save({ monthlySpendLimit: settings.monthlySpendLimit }).catch(() => undefined)}>Save Spend Limit</button>
+      <div>
+        <label className="field-label">Monthly Budget Alert ($)</label>
+        <div style={{ display: "flex", gap: 8 }}>
+          <input
+            className="input"
+            type="number"
+            style={{ width: 140 }}
+            value={settings.monthlySpendLimit}
+            onChange={(e) => setSettings((prev) => (prev ? { ...prev, monthlySpendLimit: Number(e.target.value) } : prev))}
+          />
+          <button className="btn btn-primary" onClick={() => save({ monthlySpendLimit: settings.monthlySpendLimit }).catch(() => undefined)}>Save</button>
+        </div>
+      </div>
     </div>
   );
 }

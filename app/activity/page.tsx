@@ -60,7 +60,7 @@ function ActivityPageContent() {
           <div style={{ width: "100%", height: 220 }}>
             <ResponsiveContainer>
               <PieChart>
-                <Pie data={summaryData} dataKey="value" nameKey="name" outerRadius={70} fill="var(--primary)" label />
+                <Pie data={summaryData} dataKey="value" nameKey="name" outerRadius={70} fill="var(--accent)" label />
                 <Tooltip />
               </PieChart>
             </ResponsiveContainer>

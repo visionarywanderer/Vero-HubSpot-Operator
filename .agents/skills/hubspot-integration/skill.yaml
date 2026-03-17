@@ -1,0 +1,642 @@
+# ============================================================================
+# HubSpot RevOps Integration Pro — Skill Manifest
+# ============================================================================
+# This file declares metadata, capabilities, guardrails, anti-patterns, and
+# testing guidance for the hubspot-revops-integration-pro skill.
+# ============================================================================
+
+# --------------------------------------------------------------------------
+# 1. METADATA
+# --------------------------------------------------------------------------
+metadata:
+  name: hubspot-revops-integration-pro
+  version: "1.0.0"
+  description: >
+    Expert-level HubSpot CRM integration skill covering OAuth & private-app
+    authentication, full CRM object CRUD (contacts, companies, deals, tickets,
+    custom objects), associations v4, properties, workflow automation (v3/v4),
+    batch operations, webhooks, rate-limit management, and anti-pattern
+    detection. Targets Node.js and Python SDK consumers.
+  author: Vero HubSpot Operator
+  license: Apache-2.0
+  tags:
+    - hubspot
+    - crm
+    - revops
+    - oauth
+    - webhooks
+    - automation
+    - integrations
+    - node
+    - python
+
+# --------------------------------------------------------------------------
+# 2. CAPABILITIES
+# --------------------------------------------------------------------------
+capabilities:
+  oauth_authentication:
+    description: "Implement OAuth 2.0 authorization flows for multi-account HubSpot apps"
+
+  private_app_authentication:
+    description: "Configure private-app static tokens for single-account integrations"
+
+  contacts_crud:
+    description: "Create, read, update, delete, and upsert contact records (single & batch)"
+
+  companies_crud:
+    description: "Create, read, update, delete company records and manage parent/child hierarchies"
+
+  deals_crud:
+    description: "Create, read, update, delete deal records with pipeline and stage management"
+
+  tickets_crud:
+    description: "Create, read, update, delete ticket records within support pipelines"
+
+  custom_objects:
+    description: "Define schemas and manage records for custom CRM object types (Enterprise)"
+
+  properties_management:
+    description: "Create, read, update custom properties and property groups on any CRM object"
+
+  associations_v4:
+    description: "Create, read, delete labeled and unlabeled associations between CRM records"
+
+  batch_operations:
+    description: "Execute bulk create, read, update, upsert, and archive via batch endpoints"
+
+  crm_search:
+    description: "Query CRM records with filters, sorts, and pagination via the Search API"
+
+  webhooks_setup:
+    description: "Configure webhook subscriptions, verify signatures, and handle event delivery"
+
+  polling_reconciliation:
+    description: "Implement polling strategies for data not covered by webhooks (e.g., email events)"
+
+  workflow_automation_v4:
+    description: "Create, read, update, and delete workflows via the v4 Automation API"
+
+  workflow_automation_v3_legacy:
+    description: "Read and maintain legacy v3 workflows (migration guidance to v4)"
+
+  rate_limit_management:
+    description: "Implement exponential backoff, caching, and request budgeting"
+
+  anti_pattern_detection:
+    description: "Identify and remediate common HubSpot integration mistakes in user code"
+
+  lifecycle_stage_management:
+    description: "Correctly set and clear lifecycle stages respecting forward-only progression"
+
+  pipeline_stage_management:
+    description: "Use internal IDs for deal/ticket pipeline stages, never display names"
+
+# --------------------------------------------------------------------------
+# 3. DEPENDENCIES
+# --------------------------------------------------------------------------
+dependencies:
+  runtime:
+    node: ">=18.0.0"
+    typescript: ">=5.0.0"     # optional but recommended
+    python: ">=3.9"           # if using Python SDK
+
+  npm_packages:
+    - name: "@hubspot/api-client"
+      version: ">=12.0.0"
+      notes: "Official HubSpot Node.js SDK; v9+ required for associations v4"
+    - name: "axios"
+      version: ">=1.6.0"
+      notes: "Fallback HTTP client when SDK doesn't cover an endpoint"
+    - name: "bottleneck"
+      version: ">=2.19.0"
+      notes: "Client-side rate limiter; recommended for burst control"
+    - name: "dotenv"
+      version: ">=16.0.0"
+      notes: "Load environment variables from .env files"
+
+  pip_packages:
+    - name: "hubspot-api-client"
+      version: ">=9.0.0"
+      notes: "Official HubSpot Python SDK"
+    - name: "requests"
+      version: ">=2.31.0"
+      notes: "Fallback HTTP client for raw API calls"
+
+# --------------------------------------------------------------------------
+# 4. REFERENCE_FILES
+# --------------------------------------------------------------------------
+reference_files:
+  - path: "hubspot-contacts-reference.md"
+    scope: "Contacts API v3 — CRUD, batch, dedup, lifecycle stages"
+    when_to_load: >
+      When the user asks about contacts, CRM records, creating/updating people,
+      email deduplication, lifecycle stages, or contact batch operations.
+
+  - path: "hubspot-deals-reference.md"
+    scope: "Deals API v3 — CRUD, pipelines, stages, collaborators"
+    when_to_load: >
+      When the user asks about deals, sales pipelines, deal stages, revenue
+      tracking, or deal batch operations.
+
+  - path: "hubspot-custom-objects-reference.md"
+    scope: "Custom Objects API v3 — schema creation, record CRUD, Enterprise"
+    when_to_load: >
+      When the user asks about custom objects, object schemas, defining new
+      CRM entities, or Enterprise-tier object modeling.
+
+  - path: "hubspot-properties-reference.md"
+    scope: "Properties API v3 — types, field types, groups, calculations"
+    when_to_load: >
+      When the user asks about CRM properties, custom fields, property groups,
+      calculated fields, or property types and validation.
+
+  - path: "hubspot-associations-reference.md"
+    scope: "Associations API v4 — labeled/unlabeled, type IDs, batch linking"
+    when_to_load: >
+      When the user asks about associations, linking records, relationship
+      labels, type IDs, or association batch operations.
+
+  - path: "hubspot-workflows-reference.md"
+    scope: "Workflows API v3/v4 — actions, enrollment, branching, triggers"
+    when_to_load: >
+      When the user asks about workflows, automation, enrollment triggers,
+      workflow actions, or v3-to-v4 migration.
+
+  - path: "hubspot-usage-and-limits-reference.md"
+    scope: "Rate limits, batch sizes, daily caps, resource quotas"
+    when_to_load: >
+      When the user asks about rate limits, API quotas, throttling, 429
+      errors, batch sizes, or HubSpot usage guidelines.
+
+  - path: "hubspot-authentication-and-oauth-reference.md"
+    scope: "OAuth 2.0, private apps, API key sunset, scopes"
+    when_to_load: >
+      When the user asks about authentication, OAuth flows, private apps,
+      access tokens, refresh tokens, scopes, or API key migration.
+
+  - path: "hubspot-webhooks-vs-polling-reference.md"
+    scope: "Webhook subscriptions, signatures, polling patterns, event types"
+    when_to_load: >
+      When the user asks about webhooks, event subscriptions, polling,
+      real-time data sync, or webhook signature verification.
+
+  - path: "hubspot-integration-antipatterns-reference.md"
+    scope: "Consolidated anti-patterns and pre-flight deployment checklist"
+    when_to_load: >
+      When the user asks for a code review, integration audit, best
+      practices check, or deployment readiness validation.
+
+# --------------------------------------------------------------------------
+# 5. ANTI_PATTERNS
+# --------------------------------------------------------------------------
+anti_patterns:
+  # --- Authentication ---
+  - id: AP-AUTH-001
+    name: "Deprecated API key usage"
+    trigger: "Code contains `hapikey`, `apikey` query param, or `HUBSPOT_API_KEY`"
+    action: >
+      Flag immediately. Replace with private-app Bearer token or OAuth
+      access token. API keys were sunset November 30, 2022.
+
+  - id: AP-AUTH-002
+    name: "Client-side token storage"
+    trigger: "Access token or client_secret appears in frontend code, localStorage, or cookies"
+    action: >
+      Move all token handling to a backend service. Never expose secrets
+      to the browser.
+
+  - id: AP-AUTH-003
+    name: "Missing token refresh logic"
+    trigger: "OAuth integration with no refresh_token handling or expiry check"
+    action: >
+      Add proactive token refresh before the 30-minute expiry window.
+      Store refresh_token securely and exchange before access_token expires.
+
+  - id: AP-AUTH-004
+    name: "Hardcoded client_secret"
+    trigger: "client_secret literal string in source code"
+    action: >
+      Move to environment variable or secret manager. Never commit secrets
+      to version control.
+
+  # --- Batch vs Per-Record ---
+  - id: AP-BATCH-001
+    name: "Per-record loop instead of batch create"
+    trigger: "Loop calling POST /crm/v3/objects/{type} for multiple records"
+    action: >
+      Replace with batch/create endpoint (max 100 per call). One batch
+      call replaces up to 100 individual requests.
+
+  - id: AP-BATCH-002
+    name: "Per-record loop instead of batch update"
+    trigger: "Loop calling PATCH /crm/v3/objects/{type}/{id} for multiple records"
+    action: >
+      Replace with batch/update endpoint (max 100 per call).
+
+  - id: AP-BATCH-003
+    name: "Per-record association creation"
+    trigger: "Loop calling PUT /crm/v4/objects/.../associations for multiple pairs"
+    action: >
+      Replace with batch/associate/default (max 2,000 per call) or
+      batch/create for labeled associations.
+
+  - id: AP-BATCH-004
+    name: "Individual reads to check existence before create"
+    trigger: "GET-then-POST pattern in a loop to avoid duplicates"
+    action: >
+      Replace with batch/upsert endpoint which atomically creates or
+      updates based on a unique identifier property.
+
+  # --- Rate Limits ---
+  - id: AP-RATE-001
+    name: "No 429 retry logic"
+    trigger: "API calls with no error handling for HTTP 429 status"
+    action: >
+      Add exponential backoff with jitter on 429 responses. Start at
+      1 second, double on each retry, cap at 60 seconds.
+
+  - id: AP-RATE-002
+    name: "Aggressive polling interval"
+    trigger: "setInterval or cron polling HubSpot API more often than every 60 seconds"
+    action: >
+      Switch to webhooks for real-time CRM events (free, no rate limit
+      cost). Use polling only for email analytics or as reconciliation.
+
+  - id: AP-RATE-003
+    name: "Over-fetching properties"
+    trigger: "API calls without `properties` parameter (fetching all fields)"
+    action: >
+      Specify only the properties you need via the `properties` query
+      parameter to reduce payload size and response time.
+
+  - id: AP-RATE-004
+    name: "No response caching"
+    trigger: "Repeated identical GET requests with no cache layer"
+    action: >
+      Implement TTL-based caching. Invalidate cache entries when webhook
+      events indicate data has changed.
+
+  # --- Data Model ---
+  - id: AP-DATA-001
+    name: "Missing email on contact create"
+    trigger: "POST /crm/v3/objects/contacts without `email` property"
+    action: >
+      Always include `email` when creating contacts—it is the primary
+      deduplication key. Omitting it causes duplicate records.
+
+  - id: AP-DATA-002
+    name: "Display names for enum/pipeline/stage values"
+    trigger: "Property values using human-readable labels instead of internal names"
+    action: >
+      Use internal property names (e.g., `contractsent` not `Contract Sent`).
+      Fetch valid values via GET /crm/v3/properties/{objectType}/{propertyName}.
+
+  - id: AP-DATA-003
+    name: "Non-UTC-midnight date values"
+    trigger: "Setting `date` type properties with non-midnight timestamps"
+    action: >
+      Use `YYYY-MM-DD` format or UNIX milliseconds at UTC midnight.
+      Non-midnight timestamps cause off-by-one date display in the UI.
+
+  - id: AP-DATA-004
+    name: "Setting properties to null"
+    trigger: "Property value set to `null` or `undefined` to clear it"
+    action: >
+      Set to empty string `""` to clear a property value. `null` does
+      not work in the HubSpot API.
+
+  - id: AP-DATA-005
+    name: "Backward lifecycle stage without clearing"
+    trigger: "Setting lifecyclestage to a value earlier than current stage"
+    action: >
+      Clear the lifecycle stage first (set to `""`), then set the new
+      lower stage. HubSpot only allows forward progression by default.
+
+  # --- Associations ---
+  - id: AP-ASSOC-001
+    name: "Removing unlabeled association deletes all"
+    trigger: "DELETE association using typeId 279 or 280"
+    action: >
+      Warning: removing the default unlabeled association (279/280)
+      deletes ALL associations between those records. Remove only the
+      specific labeled association typeId instead.
+
+  - id: AP-ASSOC-002
+    name: "Wrong typeId directionality"
+    trigger: "Association typeId doesn't match from→to object direction"
+    action: >
+      Verify the typeId matches the fromObjectType→toObjectType direction.
+      Contact→Company is typeId 1; Company→Contact is typeId 2.
+
+  - id: AP-ASSOC-003
+    name: "Using v3 associations for new integrations"
+    trigger: "Code using /crm/v3/associations/ endpoints"
+    action: >
+      Migrate to v4 associations (/crm/v4/). v4 supports labels, larger
+      batch sizes (2,000), and richer association metadata.
+
+  # --- Webhooks ---
+  - id: AP-HOOK-001
+    name: "Synchronous webhook processing"
+    trigger: "Webhook handler performs database writes or API calls before responding"
+    action: >
+      Respond with 200 immediately, then process asynchronously via a
+      queue. HubSpot times out after 5 seconds and retries.
+
+  - id: AP-HOOK-002
+    name: "Missing webhook signature verification"
+    trigger: "Webhook endpoint without X-HubSpot-Signature validation"
+    action: >
+      Validate X-HubSpot-Signature header using SHA-256(app_secret +
+      raw_body). Reject requests that fail verification.
+
+  - id: AP-HOOK-003
+    name: "No idempotency on webhook events"
+    trigger: "Webhook handler without eventId deduplication"
+    action: >
+      Track processed eventIds to prevent duplicate processing. HubSpot
+      uses at-least-once delivery and may resend events.
+
+  - id: AP-HOOK-004
+    name: "Webhooks for email engagement events"
+    trigger: "Webhook subscription for email opens, clicks, bounces, or deliveries"
+    action: >
+      Email engagement events are not supported via webhooks. Use the
+      Events/Email Analytics API with polling instead.
+
+  # --- Workflows ---
+  - id: AP-FLOW-001
+    name: "Using v3 workflow API for new builds"
+    trigger: "Code using /automation/v3/workflows endpoints for new workflows"
+    action: >
+      Use v4 (/automation/v4/flows). v3 is legacy and lacks modern
+      action types, AI actions, and association management.
+
+  - id: AP-FLOW-002
+    name: "Workflow update without revisionId"
+    trigger: "PUT /automation/v4/flows/{id} without revisionId in body"
+    action: >
+      Always GET the current workflow first and include its revisionId
+      in the PUT body. This is an optimistic concurrency lock.
+
+  - id: AP-FLOW-003
+    name: "Partial action list in workflow update"
+    trigger: "PUT /automation/v4/flows/{id} with fewer actions than the current workflow"
+    action: >
+      Include ALL actions in every PUT request. Omitted actions are
+      permanently deleted—there is no undo.
+
+  # --- General ---
+  - id: AP-GEN-001
+    name: "Ignoring pagination"
+    trigger: "API list call without following paging.next.after cursor"
+    action: >
+      Always follow the `after` cursor until `paging.next` is absent.
+      Otherwise you only process the first page of results.
+
+  - id: AP-GEN-002
+    name: "Custom objects without Enterprise tier check"
+    trigger: "Code using custom object endpoints without tier validation"
+    action: >
+      Custom objects require HubSpot Enterprise tier. Verify the
+      customer's subscription before building on custom objects.
+
+# --------------------------------------------------------------------------
+# 6. GUARDRAILS
+# --------------------------------------------------------------------------
+guardrails:
+  auth:
+    rule: "Never use hapikey query-param authentication or deprecated API keys"
+    enforcement: >
+      All code must use Bearer token authentication via the Authorization
+      header. Flag any occurrence of `hapikey`, `apikey`, or query-param
+      tokens as a blocking issue.
+
+  batch:
+    rule: "Always prefer batch endpoints over per-record loops"
+    enforcement: >
+      When generating code that operates on more than 3 records, use the
+      appropriate batch endpoint. CRM batch limit: 100 records/call.
+      Association batch limit: 2,000 inputs/call (create/delete),
+      1,000 inputs/call (read).
+
+  webhooks:
+    rule: "Prefer webhooks over polling for real-time CRM event needs"
+    enforcement: >
+      Default to webhook subscriptions for CRM object changes. Reserve
+      polling for email analytics, reconciliation passes, or environments
+      where inbound HTTPS endpoints are not feasible.
+
+  rate_limits:
+    rule: "Implement exponential backoff with jitter on 429 responses"
+    enforcement: >
+      All API client code must handle HTTP 429. Retry after 1s, 2s, 4s,
+      8s, ... up to 60s with random jitter. Never retry immediately.
+
+  secrets:
+    rule: "Never hard-code tokens, API keys, or client secrets in source code"
+    enforcement: >
+      All credentials must come from environment variables, a secret
+      manager, or encrypted configuration. Flag any string literal that
+      looks like a HubSpot token (pat-*, Bearer token in code).
+
+  data_integrity:
+    rule: "Use internal names for enums, pipelines, and stages—never display labels"
+    enforcement: >
+      When setting properties like dealstage, lifecyclestage, or any
+      enumeration, use the internal value. Suggest fetching valid values
+      via the Properties API when uncertain.
+
+  pagination:
+    rule: "Always follow pagination cursors to completion"
+    enforcement: >
+      Any code listing CRM records must loop on `paging.next.after` until
+      the field is absent. Warn if only a single page is fetched.
+
+# --------------------------------------------------------------------------
+# 7. ENVIRONMENTS
+# --------------------------------------------------------------------------
+environments:
+  development:
+    description: "Local development against a HubSpot sandbox or test portal"
+    env_vars:
+      - name: HUBSPOT_PRIVATE_APP_TOKEN
+        required: true
+        notes: "Token from a private app in the dev/sandbox portal"
+      - name: HUBSPOT_PORTAL_ID
+        required: false
+        notes: "Portal ID for the sandbox account; useful for multi-portal setups"
+      - name: HUBSPOT_CLIENT_ID
+        required: false
+        notes: "Only needed if developing an OAuth public app"
+      - name: HUBSPOT_CLIENT_SECRET
+        required: false
+        notes: "Only needed if developing an OAuth public app"
+      - name: HUBSPOT_REDIRECT_URI
+        required: false
+        notes: "Typically http://localhost:3000/oauth-callback in dev"
+      - name: NODE_ENV
+        required: false
+        default: "development"
+
+  staging:
+    description: "Pre-production environment using a staging HubSpot portal"
+    env_vars:
+      - name: HUBSPOT_PRIVATE_APP_TOKEN
+        required: true
+        notes: "Token from a private app in the staging portal"
+      - name: HUBSPOT_PORTAL_ID
+        required: true
+        notes: "Staging portal ID; must differ from production"
+      - name: HUBSPOT_CLIENT_ID
+        required: true
+        notes: "OAuth app ID (same app, staging install)"
+      - name: HUBSPOT_CLIENT_SECRET
+        required: true
+        notes: "Store in secret manager, never in code"
+      - name: HUBSPOT_REDIRECT_URI
+        required: true
+        notes: "HTTPS redirect URI for staging domain"
+      - name: HUBSPOT_WEBHOOK_SECRET
+        required: false
+        notes: "App secret for webhook signature verification"
+      - name: NODE_ENV
+        required: false
+        default: "staging"
+
+  production:
+    description: "Live production environment connected to the customer's HubSpot portal"
+    env_vars:
+      - name: HUBSPOT_PRIVATE_APP_TOKEN
+        required: true
+        notes: "Token from a private app in the production portal"
+      - name: HUBSPOT_PORTAL_ID
+        required: true
+        notes: "Production portal ID"
+      - name: HUBSPOT_CLIENT_ID
+        required: true
+        notes: "OAuth app ID for production"
+      - name: HUBSPOT_CLIENT_SECRET
+        required: true
+        notes: "Must be in a secret manager (AWS Secrets Manager, Vault, etc.)"
+      - name: HUBSPOT_REDIRECT_URI
+        required: true
+        notes: "HTTPS production redirect URI"
+      - name: HUBSPOT_WEBHOOK_SECRET
+        required: true
+        notes: "App secret for X-HubSpot-Signature verification"
+      - name: HUBSPOT_RATE_LIMIT_TIER
+        required: false
+        notes: "One of: free, starter, professional, enterprise — drives throttle config"
+      - name: NODE_ENV
+        required: false
+        default: "production"
+
+# --------------------------------------------------------------------------
+# 8. TESTING
+# --------------------------------------------------------------------------
+testing:
+  validation_strategy: >
+    Test each capability by issuing the sample prompts below and verifying
+    that generated code follows all guardrails, uses correct endpoints,
+    and references the appropriate reference file.
+
+  sample_prompts:
+    - capability: oauth_authentication
+      prompt: "Set up OAuth 2.0 for a HubSpot public app with contacts and deals scopes"
+      expect: >
+        Code generates authorization URL with client_id, scope, redirect_uri.
+        Implements /oauth-callback that exchanges code for tokens. Stores
+        refresh_token securely. Refreshes before 30-min expiry.
+
+    - capability: private_app_authentication
+      prompt: "Connect to HubSpot using a private app token"
+      expect: >
+        Code reads token from env var HUBSPOT_PRIVATE_APP_TOKEN. Uses
+        Authorization: Bearer header. Never uses hapikey query param.
+
+    - capability: contacts_crud
+      prompt: "Create 50 contacts from a CSV file in HubSpot"
+      expect: >
+        Code uses batch/create endpoint (not a loop). Includes email
+        property. Handles response errors per-record. Max 100 per batch.
+
+    - capability: deals_crud
+      prompt: "Update deal stages for 200 deals to 'closedwon'"
+      expect: >
+        Code uses batch/update in chunks of 100. Uses internal stage ID
+        'closedwon' not display name. Specifies pipeline if ambiguous.
+
+    - capability: custom_objects
+      prompt: "Create a custom object called 'Subscription' with a unique external_id"
+      expect: >
+        Code creates schema via POST /crm/v3/schemas with hasUniqueValue
+        on external_id. Notes Enterprise tier requirement. Sets
+        primaryDisplayProperty and searchableProperties.
+
+    - capability: properties_management
+      prompt: "Add a custom property 'renewal_date' to deals"
+      expect: >
+        Code uses POST /crm/v3/properties/deals with type=date,
+        fieldType=date, includes groupName. Uses YYYY-MM-DD format note.
+
+    - capability: associations_v4
+      prompt: "Link 500 contacts to their companies using batch associations"
+      expect: >
+        Code uses POST /crm/v4/associations/contacts/companies/batch/
+        associate/default. Chunks into batches of 2,000 max. Uses correct
+        typeId direction (contact→company = 279 unlabeled or 1 primary).
+
+    - capability: webhooks_setup
+      prompt: "Set up a webhook to track when deal stages change"
+      expect: >
+        Code creates subscription for deal.propertyChange on dealstage.
+        Implements signature verification. Responds within 5 seconds.
+        Processes events asynchronously via queue.
+
+    - capability: polling_reconciliation
+      prompt: "Poll HubSpot for email open events every hour"
+      expect: >
+        Code uses Events/Email Analytics API (not webhooks). Implements
+        cursor-based pagination. Stores last poll timestamp. Notes that
+        email events are not available via webhooks.
+
+    - capability: workflow_automation_v4
+      prompt: "Create a workflow that sends an email when a contact becomes an MQL"
+      expect: >
+        Code uses POST /automation/v4/flows with CONTACT_FLOW type.
+        Uses EVENT_BASED enrollment on lifecyclestage propertyChange.
+        Includes delay and send-email actions with proper actionTypeIds.
+        Sets isEnabled=false initially.
+
+    - capability: batch_operations
+      prompt: "Upsert 1,000 contacts from an external system"
+      expect: >
+        Code uses batch/upsert in chunks of 100. Uses email or custom
+        unique property as idProperty. Handles partial failures per chunk.
+
+    - capability: rate_limit_management
+      prompt: "My HubSpot integration keeps getting 429 errors"
+      expect: >
+        Recommends exponential backoff with jitter. Suggests Bottleneck
+        or similar rate limiter. Reviews batch usage, caching, and
+        polling frequency. References tier-specific limits.
+
+    - capability: anti_pattern_detection
+      prompt: "Review this HubSpot integration code for issues"
+      expect: >
+        Checks for all anti-patterns: deprecated auth, per-record loops,
+        missing retry logic, over-fetching, missing pagination, display
+        name usage, and webhook processing issues.
+
+    - capability: lifecycle_stage_management
+      prompt: "Move a contact from 'customer' back to 'lead'"
+      expect: >
+        Code first clears lifecyclestage (set to ""), then sets to
+        "lead". Explains forward-only constraint.
+
+    - capability: pipeline_stage_management
+      prompt: "Move a deal to the 'Negotiation' stage"
+      expect: >
+        Code fetches pipeline stages via Properties API to find internal
+        ID. Uses internal ID (not display name) in PATCH request.

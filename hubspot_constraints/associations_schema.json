@@ -1,0 +1,35 @@
+{
+  "validAssociationCategories": [
+    "HUBSPOT_DEFINED",
+    "USER_DEFINED",
+    "INTEGRATOR_DEFINED"
+  ],
+  "standardAssociationTypes": [
+    { "from": "contacts", "to": "companies", "default": true },
+    { "from": "contacts", "to": "deals", "default": true },
+    { "from": "contacts", "to": "tickets", "default": true },
+    { "from": "companies", "to": "deals", "default": true },
+    { "from": "companies", "to": "tickets", "default": true },
+    { "from": "deals", "to": "line_items", "default": true },
+    { "from": "deals", "to": "quotes", "default": true }
+  ],
+  "requiredFields": ["fromObjectType", "toObjectType"],
+  "optionalFields": ["category", "label"],
+  "defaults": {
+    "category": "USER_DEFINED"
+  },
+  "batchEndpoint": "POST /crm/v4/associations/{fromObjectType}/{toObjectType}/batch/create",
+  "batchLimit": 100,
+  "labeledAssociations": {
+    "description": "Custom association labels (e.g., 'Decision Maker') require Enterprise tier",
+    "format": {
+      "category": "USER_DEFINED",
+      "label": "Decision Maker"
+    }
+  },
+  "notes": [
+    "Associations are bidirectional — creating A→B also creates B→A",
+    "Custom objects can associate with any standard or custom object",
+    "Max association labels per pair: varies by tier"
+  ]
+}

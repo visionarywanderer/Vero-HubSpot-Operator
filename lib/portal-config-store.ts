@@ -136,11 +136,19 @@ class SqlitePortalConfigStore implements PortalConfigStore {
   }
 
   async discover(portalId: string): Promise<PartialPortalConfig> {
+    const safeGet = async (path: string) => {
+      try {
+        return await hubSpotClient.get(path);
+      } catch {
+        return { status: 0, data: { results: [] } };
+      }
+    };
+
     const [contactPropsResp, dealPipelinesResp, ownersResp, listsResp] = await Promise.all([
-      hubSpotClient.get("/crm/v3/properties/contacts"),
-      hubSpotClient.get("/crm/v3/pipelines/deals"),
-      hubSpotClient.get("/crm/v3/owners"),
-      hubSpotClient.get("/crm/v3/lists/")
+      safeGet("/crm/v3/properties/contacts"),
+      safeGet("/crm/v3/pipelines/deals"),
+      safeGet("/crm/v3/owners"),
+      safeGet("/crm/v3/lists/")
     ]);
 
     const contactProps = (contactPropsResp.data as { results?: Array<{ name: string }> }).results ?? [];

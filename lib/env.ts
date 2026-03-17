@@ -1,18 +1,19 @@
 import { z } from "zod";
 
 const envSchema = z.object({
-  NEXTAUTH_URL: z.string().url(),
-  NEXTAUTH_SECRET: z.string().min(32),
-  GOOGLE_CLIENT_ID: z.string().min(1),
-  GOOGLE_CLIENT_SECRET: z.string().min(1),
+  // Web-app only (NextAuth) — optional so MCP server can run without them
+  NEXTAUTH_URL: z.string().url().optional(),
+  NEXTAUTH_SECRET: z.string().min(32).optional(),
+  GOOGLE_CLIENT_ID: z.string().min(1).optional(),
+  GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
   ALLOWED_GOOGLE_DOMAIN: z.string().default("verodigital.co"),
   ALLOWED_GOOGLE_EMAILS: z.string().optional(),
+  // HubSpot OAuth
   HUBSPOT_OAUTH_CLIENT_ID: z.string().optional(),
   HUBSPOT_OAUTH_CLIENT_SECRET: z.string().optional(),
   HUBSPOT_OAUTH_REDIRECT_URI: z.string().url().optional(),
   HUBSPOT_TOKEN: z.string().min(1).optional(),
-  HUBSPOT_MCP_URL: z.string().url().optional(),
-  ANTHROPIC_API_KEY: z.string().min(1),
+  // Shared — required by both web app and MCP server
   ENCRYPTION_KEY: z.string().min(32),
   DATABASE_PATH: z.string().optional(),
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),

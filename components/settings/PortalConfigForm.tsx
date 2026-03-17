@@ -9,6 +9,8 @@ export function PortalConfigForm({ portalId }: { portalId: string }) {
   const [requireDryRun, setRequireDryRun] = useState(true);
   const [requireConfirmation, setRequireConfirmation] = useState(true);
   const [allowDeletes, setAllowDeletes] = useState(false);
+  const [discovering, setDiscovering] = useState(false);
+  const [discoverError, setDiscoverError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const response = await apiGet<{ ok: true; config: Record<string, unknown> }>(`/api/portal-config/${portalId}`);
@@ -30,13 +32,24 @@ export function PortalConfigForm({ portalId }: { portalId: string }) {
         <h3>Portal Configuration</h3>
         <button
           className="btn btn-ghost"
+          disabled={discovering}
           onClick={async () => {
-            await apiPost("/api/portal-config/discover", { portalId });
-            await load();
+            setDiscovering(true);
+            setDiscoverError(null);
+            try {
+              await apiPost("/api/portal-config/discover", { portalId });
+              await load();
+            } catch (error) {
+              setDiscoverError(error instanceof Error ? error.message : "Auto-discover failed");
+            } finally {
+              setDiscovering(false);
+            }
           }}
         >
-          Auto-Discover
+          {discovering ? "Discovering..." : "Auto-Discover"}
         </button>
+
+        {discoverError ? <div className="card" style={{ background: "#fff2f2", borderColor: "#ffcccc" }}>{discoverError}</div> : null}
 
         <label>Max bulk records</label>
         <input className="input" type="number" value={maxBulkRecords} onChange={(e) => setMaxBulkRecords(Number(e.target.value))} />

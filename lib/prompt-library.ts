@@ -1,7 +1,5 @@
 import { mkdir, readFile, writeFile } from "fs/promises";
 import path from "path";
-import { orchestrator } from "@/lib/orchestrator";
-import { authManager } from "@/lib/auth-manager";
 import { portalConfigStore, type PortalConfig } from "@/lib/portal-config-store";
 
 export interface PromptParameter {
@@ -26,7 +24,6 @@ export interface PromptLibrary {
   list(category?: string): PromptEntry[];
   get(id: string): PromptEntry;
   search(query: string): PromptEntry[];
-  execute(id: string, parameters?: Record<string, string>, portalId?: string): Promise<void>;
   add(entry: PromptEntry): void;
   remove(id: string): void;
   resolve(id: string, portalConfig: PortalConfig): string;
@@ -35,29 +32,6 @@ export interface PromptLibrary {
 const PROMPTS_FILE = path.join(process.cwd(), "prompts", "prompts.json");
 
 const DEFAULT_PROMPTS: PromptEntry[] = [
-  {
-    id: "audit-data-quality",
-    name: "Data Quality Audit",
-    category: "audit",
-    module: "A1",
-    layer: "mcp",
-    description: "Scan records for missing required fields and fill-rate issues",
-    prompt:
-      "Search all {objectType} and check missing critical fields. Report total, with value, missing, fill rate %, flag <80%, sort worst first.",
-    parameters: [{ name: "objectType", default: "contacts", options: ["contacts", "companies", "deals"] }],
-    tags: ["audit", "data quality", "contacts"]
-  },
-  {
-    id: "audit-pipeline-health",
-    name: "Pipeline Health Audit",
-    category: "audit",
-    module: "A1",
-    layer: "mcp",
-    description: "Audit pipeline stage health and stuck deals",
-    prompt:
-      "Get deals grouped by pipeline/stage. Report totals, value, avg days in stage, deals stuck >30 days, past close dates still open, amount=0/null. Return Green/Yellow/Red health score.",
-    tags: ["audit", "pipeline", "deals"]
-  },
   {
     id: "crm-create-followup-tasks",
     name: "Create Follow-up Tasks",
@@ -220,19 +194,6 @@ class FilePromptLibrary implements PromptLibrary {
     });
   }
 
-  async execute(id: string, parameters?: Record<string, string>, portalId?: string): Promise<void> {
-    const activePortal = authManager.getActivePortal(portalId);
-    const portalConfig = await portalConfigStore.load(activePortal.id).catch(() => undefined);
-
-    const resolvedPrompt = this.resolveWithParameters(id, portalConfig, parameters);
-    const plan = await orchestrator.processPrompt(resolvedPrompt, activePortal.id);
-
-    if (plan.requiresConfirmation) {
-      throw new Error(`Prompt requires confirmation. Plan ID: ${plan.planId}`);
-    }
-
-    await orchestrator.confirmAndExecute(plan.planId, "yes");
-  }
   add(entry: PromptEntry): void {
     this.prompts.set(entry.id, entry);
     this.persist().catch(() => {

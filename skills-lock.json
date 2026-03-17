@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "skills": {
+    "hubspot-integration": {
+      "source": "davila7/claude-code-templates",
+      "sourceType": "github",
+      "computedHash": "1b47194ace8254878c34de3ee7ef7b142547e3c77be178875b15b22aa1167c3a"
+    }
+  }
+}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { ActivityDetail } from "@/components/activity/ActivityDetail";
 import type { ActivityEntry } from "@/hooks/useActivity";
 
@@ -22,8 +22,8 @@ export function ActivityTable({ entries }: { entries: ActivityEntry[] }) {
         </thead>
         <tbody>
           {entries.map((entry) => (
-            <>
-              <tr key={entry.id} onClick={() => setExpandedId((prev) => (prev === entry.id ? null : entry.id))} style={{ cursor: "pointer" }}>
+            <Fragment key={entry.id}>
+              <tr onClick={() => setExpandedId((prev) => (prev === entry.id ? null : entry.id))} style={{ cursor: "pointer" }}>
                 <td>{new Date(entry.timestamp).toLocaleString()}</td>
                 <td>{entry.action}</td>
                 <td>{entry.objectType}</td>
@@ -38,7 +38,7 @@ export function ActivityTable({ entries }: { entries: ActivityEntry[] }) {
                   </td>
                 </tr>
               ) : null}
-            </>
+            </Fragment>
           ))}
         </tbody>
       </table>

@@ -1,0 +1,80 @@
+{
+  "propertyTypes": {
+    "string": ["text", "textarea", "phonenumber", "file", "html", "calculation_equation"],
+    "number": ["number", "calculation_equation"],
+    "datetime": ["date"],
+    "date": ["date"],
+    "bool": ["booleancheckbox", "calculation_equation"],
+    "enumeration": ["select", "radio", "checkbox", "booleancheckbox", "calculation_equation"],
+    "object_coordinates": ["text"],
+    "json": ["text"]
+  },
+  "readOnlyTypes": ["object_coordinates", "json"],
+  "propertyValueFormats": {
+    "string": { "format": "plain string", "example": "hello world" },
+    "number": { "format": "numeric string", "example": "42.5" },
+    "datetime": { "format": "epoch milliseconds string", "example": "1679529600000" },
+    "date": { "format": "YYYY-MM-DD string", "example": "2026-03-17" },
+    "bool": { "format": "true/false string", "example": "true" },
+    "enumeration_single": { "format": "value string", "example": "option_a" },
+    "enumeration_multi": { "format": "semicolon-separated", "example": "opt_a;opt_b;opt_c" }
+  },
+  "nameConstraints": {
+    "pattern": "^[a-z][a-z0-9_]*$",
+    "maxLength": 64,
+    "reservedPrefixes": ["hs_", "hubspot_"],
+    "description": "Lowercase snake_case, starts with letter"
+  },
+  "maxPropertyNameLength": 64,
+  "maxLabelLength": 128,
+  "maxUniqueValueProperties": 10,
+  "maxEnumerationOptions": 500,
+  "maxStringValueLength": 65536,
+  "customPropertyLimitsByTier": {
+    "free": 10,
+    "starter": 1000,
+    "professional": 1000,
+    "enterprise": 1000
+  },
+  "enumerationRequiresOptions": true,
+  "optionValueConstraints": {
+    "pattern": "^[a-z0-9_]+$",
+    "description": "Lowercase alphanumeric with underscores, no spaces"
+  },
+  "reservedPropertyNames": [
+    "id", "createdate", "lastmodifieddate", "hs_object_id"
+  ],
+  "validGroupNames": {
+    "contacts": ["contactinformation", "sales_properties", "conversion_information"],
+    "companies": ["companyinformation"],
+    "deals": ["dealinformation"],
+    "tickets": ["ticketinformation"]
+  },
+  "validObjectTypes": [
+    "contacts", "companies", "deals", "tickets", "line_items", "products",
+    "quotes", "calls", "emails", "meetings", "notes", "tasks"
+  ],
+  "immutableAfterCreation": ["name", "type"],
+  "canChangeAfterCreation": ["label", "description", "groupName", "displayOrder", "hidden", "formField", "options", "fieldType", "calculationFormula"],
+  "readOnlyNotes": "Properties starting with hs_ are HubSpot-defined and may be read-only. Calculation properties created via API cannot be edited in HubSpot UI. object_coordinates and json types cannot be created.",
+  "sensitivityLevels": {
+    "standard": "Default — returned by GET without special params",
+    "sensitive": "Enterprise only, BETA — requires dataSensitivity=sensitive query param",
+    "highlySensitive": "Separate scope tier"
+  },
+  "calculationEquation": {
+    "validForTypes": ["string", "number", "bool", "enumeration"],
+    "formulaSyntax": "Uses HubSpot formula language with property variable references",
+    "stringVarSyntax": "string(property_name)",
+    "boolVarSyntax": "bool(property_name)",
+    "numberVarSyntax": "property_name (direct)",
+    "functions": ["max", "min", "is_present", "contains", "concatenate", "number_to_string", "string_to_number"],
+    "conditionalSyntax": "if condition then statement [elseif ...] [else ...] endif",
+    "criticalNote": "Calculation properties created via API CANNOT be edited in HubSpot UI"
+  },
+  "batchLimits": {
+    "maxBatchSize": 100,
+    "createEndpoint": "POST /crm/v3/properties/{objectType}/batch/create",
+    "updateEndpoint": "POST /crm/v3/properties/{objectType}/batch/update"
+  }
+}

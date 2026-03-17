@@ -9,6 +9,7 @@ export interface ListSummary {
   processingType?: string;
   objectTypeId?: string;
   size?: number;
+  createdAt?: string;
   updatedAt?: string;
   [key: string]: unknown;
 }

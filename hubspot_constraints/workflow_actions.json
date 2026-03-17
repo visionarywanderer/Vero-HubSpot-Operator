@@ -1,0 +1,152 @@
+{
+  "apiStatus": "BETA — subject to change. By using these endpoints you agree to HubSpot's Developer Terms and Developer Beta Terms.",
+  "endpoint": "POST /automation/v4/flows",
+  "requiredScopes": ["automation"],
+  "requiredTier": "Professional or higher (Marketing, Sales, Service, Content, Data, or Commerce Hub)",
+  "validActionTypeIds": [
+    { "id": "0-1", "name": "Delay", "variants": ["Delay for a set amount of time", "Delay until a day of week", "Delay until a specific time of day"], "requiredFields": { "delta": "string (minutes)", "time_unit": "MINUTES | HOURS | DAYS | WEEKS" } },
+    { "id": "0-3", "name": "Create task", "requiredFields": { "subject": "string" }, "optionalFields": { "body": "string", "priority": "LOW | MEDIUM | HIGH", "ownerIds": "array" } },
+    { "id": "0-4", "name": "Send email", "requiredFields": { "content_id": "string (email template ID)" } },
+    { "id": "0-5", "name": "Set property value", "requiredFields": { "propertyName": { "type": "STATIC_VALUE | OBJECT_PROPERTY", "staticValue": "newValue" } }, "notes": "Field key is the property internal name. Value uses input value type objects." },
+    { "id": "0-8", "name": "Send internal email notification", "requiredFields": { "user_ids": "array", "subject": "string", "body": "string" } },
+    { "id": "0-9", "name": "Send in-app notification", "requiredFields": { "user_ids": "array", "subject": "string", "body": "string" }, "optionalFields": { "delivery_method": "APP" } },
+    { "id": "0-11", "name": "Rotate record to owner", "requiredFields": {} },
+    { "id": "0-14", "name": "Create record", "requiredFields": { "object_type_id": "string", "properties": "array", "associations": "array" } },
+    { "id": "0-15", "name": "Go to workflow", "requiredFields": {} },
+    { "id": "0-29", "name": "Delay until an event occurs", "requiredFields": {} },
+    { "id": "0-30", "name": "Add to / Remove from ads audience", "requiredFields": {} },
+    { "id": "0-31", "name": "Set marketing contact status", "requiredFields": {} },
+    { "id": "0-35", "name": "Delay until a calendar/date property", "variants": ["Delay until a calendar date", "Delay until a date property"], "requiredFields": {} },
+    { "id": "0-63809083", "name": "Add to static list", "requiredFields": { "list_id": "string" }, "notes": "Replaces deprecated 0-13" },
+    { "id": "0-63863438", "name": "Remove from static list", "requiredFields": { "list_id": "string" } },
+    { "id": "0-46510720", "name": "Enroll in a sequence", "requiredFields": {} },
+    { "id": "0-4702372", "name": "Unenroll from sequence", "requiredFields": {} },
+    { "id": "0-18224765", "name": "Delete contact", "requiredFields": {} },
+    { "id": "0-63189541", "name": "Create associations", "requiredFields": {} },
+    { "id": "0-61139476", "name": "Remove association labels", "requiredFields": {} },
+    { "id": "0-61139484", "name": "Update association labels", "requiredFields": {} },
+    { "id": "0-169425243", "name": "Create note", "requiredFields": {} },
+    { "id": "0-43347357", "name": "Manage communication subscriptions", "requiredFields": {} },
+    { "id": "0-44475148", "name": "Assign conversation owner", "requiredFields": {} },
+    { "id": "0-25085031", "name": "Send WhatsApp message", "requiredFields": {} },
+    { "id": "0-40900952", "name": "Send SMS message", "requiredFields": {} },
+    { "id": "0-199186210", "name": "Send survey", "requiredFields": {} },
+    { "id": "0-225935194", "name": "Validate and format phone number", "requiredFields": {} },
+    { "id": "0-177946906", "name": "Enrich Record", "requiredFields": {} },
+    { "id": "0-172351286", "name": "Data Agent: Custom prompt (BETA)", "requiredFields": {} },
+    { "id": "0-201091202", "name": "Data Agent: Fill Smart Property (BETA)", "requiredFields": {} },
+    { "id": "0-216647524", "name": "Data Agent: Research (BETA)", "requiredFields": {} }
+  ],
+  "deprecatedActionIds": {
+    "0-7": "Previously documented as Create task — use 0-3 instead",
+    "0-13": "Alter list membership — replaced by 0-63809083 (add) and 0-63863438 (remove)"
+  },
+  "deprecatedActionNames": {
+    "SET_CONTACT_PROPERTY": "Use 0-5 instead",
+    "CREATE_TASK": "Use 0-3 instead",
+    "SEND_EMAIL": "Use 0-4 instead",
+    "DELAY": "Use 0-1 instead",
+    "SEND_INTERNAL_EMAIL": "Use 0-8 instead",
+    "ADD_TO_LIST": "Use 0-63809083 instead",
+    "REMOVE_FROM_LIST": "Use 0-63863438 instead"
+  },
+  "integrationActionIds": {
+    "1-100451": "Create an Asana task",
+    "1-179507819": "Send Slack notification",
+    "1-2825058": "Create a Trello Card"
+  },
+  "actionStructureTypes": {
+    "SINGLE_CONNECTION": "Standard actions with actionTypeId, fields, and connection",
+    "LIST_BRANCH": "If/then filter-based branching — NO actionTypeId. Uses listBranches with filterBranch criteria.",
+    "STATIC_BRANCH": "Value-based branching — NO actionTypeId. Uses inputValue and staticBranches.",
+    "AB_TEST_BRANCH": "A/B test split — NO actionTypeId. Uses testBranches with percentage.",
+    "CUSTOM_CODE": "Custom code action. Runtime: NODE16X or PYTHON3_9. 20s timeout, 128MB memory.",
+    "WEBHOOK": "Webhook action. Supports GET/POST/PUT/PATCH/DELETE. Auth types: AUTH_KEY or SIGNATURE."
+  },
+  "inputValueTypes": {
+    "STATIC_VALUE": "{ type: 'STATIC_VALUE', staticValue: 'string' }",
+    "OBJECT_PROPERTY": "{ type: 'OBJECT_PROPERTY', propertyName: 'string' }",
+    "FIELD_DATA": "{ type: 'FIELD_DATA', actionId: 'string', dataKey: 'string' }",
+    "ENROLLED_OBJECT": "{ type: 'ENROLLED_OBJECT' }",
+    "INCREMENT": "{ type: 'INCREMENT', incrementAmount: number }"
+  },
+  "validFlowTypes": ["CONTACT_FLOW", "PLATFORM_FLOW"],
+  "validFlowTypeValues": ["WORKFLOW", "ACTION_SET", "UNKNOWN"],
+  "flowTypeMapping": {
+    "0-1": "CONTACT_FLOW",
+    "0-2": "PLATFORM_FLOW",
+    "0-3": "PLATFORM_FLOW",
+    "0-5": "PLATFORM_FLOW",
+    "0-7": "PLATFORM_FLOW",
+    "0-47": "PLATFORM_FLOW",
+    "0-48": "PLATFORM_FLOW",
+    "0-53": "PLATFORM_FLOW",
+    "0-54": "PLATFORM_FLOW",
+    "0-162": "PLATFORM_FLOW",
+    "custom": "PLATFORM_FLOW"
+  },
+  "validEnrollmentTypes": ["EVENT_BASED", "LIST_BASED", "MANUAL"],
+  "enrollmentTypes": {
+    "EVENT_BASED": {
+      "description": "Trigger on property change or event",
+      "requiredFields": ["type", "shouldReEnroll", "eventFilterBranches"],
+      "optionalFields": ["listMembershipFilterBranches", "refinementCriteria"]
+    },
+    "LIST_BASED": {
+      "description": "Trigger when record meets list filter criteria",
+      "requiredFields": ["type", "shouldReEnroll", "listFilterBranch"],
+      "optionalFields": ["unEnrollObjectsNotMeetingCriteria", "reEnrollmentTriggersFilterBranches"]
+    },
+    "MANUAL": {
+      "description": "No automatic enrollment",
+      "requiredFields": ["type", "shouldReEnroll"]
+    }
+  },
+  "validConnectionTypes": ["SINGLE_CONNECTION"],
+  "edgeTypes": ["STANDARD", "GOTO"],
+  "requiredWorkflowFields": ["type", "objectTypeId", "actions", "enrollmentCriteria", "isEnabled", "enrollmentSchedule", "timeWindows", "blockedDates", "customProperties", "dataSources", "suppressionListIds"],
+  "optionalWorkflowFields": ["name", "description", "startActionId", "nextAvailableActionId", "uuid", "canEnrollFromSalesforce", "goalFilterBranch", "suppressionFilterBranch", "eventAnchor", "unEnrollmentSetting"],
+  "requiredActionFields": {
+    "SINGLE_CONNECTION": ["actionId", "actionTypeId", "actionTypeVersion", "type", "fields", "connection"],
+    "LIST_BRANCH": ["actionId", "type", "listBranches", "defaultBranchName", "defaultBranch"],
+    "STATIC_BRANCH": ["actionId", "type", "inputValue", "staticBranches", "defaultBranchName", "defaultBranch"],
+    "AB_TEST_BRANCH": ["actionId", "type", "testBranches"],
+    "CUSTOM_CODE": ["actionId", "type", "runtime", "sourceCode", "connection"],
+    "WEBHOOK": ["actionId", "type", "webhookUrl", "method", "connection"]
+  },
+  "eventTypeIds": {
+    "0-1": "Object created / property changed",
+    "4-1639801": "Form submission",
+    "4-96000": "Page visited",
+    "4-666440": "Email opened"
+  },
+  "safetyConstraints": {
+    "isEnabledMustBeFalse": true,
+    "reason": "All workflows deploy disabled for safety review"
+  },
+  "workflowLimits": {
+    "professional": 300,
+    "enterprise": 1000,
+    "dataHubPro": 400,
+    "dataHubEnterprise": 1100,
+    "maxActionsPerWorkflow": 500,
+    "maxBranchesPerIfThen": 20,
+    "maxBranchesPerStaticBranch": 250,
+    "maxEnrollmentTriggerFilters": 250,
+    "executionLogLimit": "100,000 successful logs/day",
+    "actionLogRetention": "90 days",
+    "historicalEnrollmentRetention": "6 months",
+    "customCodeTimeout": "20 seconds",
+    "customCodeMemory": "128 MB",
+    "customCodeMaxInputProperties": 50,
+    "customCodeMaxStringOutput": 65000
+  },
+  "updateGotchas": [
+    "PUT updates REMOVE any fields not included from the GET response — always start from GET",
+    "Strip createdAt, updatedAt, and dataSources before PUT",
+    "revisionId is required for PUT updates",
+    "Deletion via API is PERMANENT — cannot be restored without HubSpot Support",
+    "Branch actions (LIST_BRANCH, STATIC_BRANCH, AB_TEST_BRANCH) have NO actionTypeId"
+  ],
+  "proTip": "Create the workflow manually in HubSpot UI first, then GET /automation/v4/flows/{flowId} to see the exact JSON structure"
+}

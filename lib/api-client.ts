@@ -1,5 +1,6 @@
 import { authManager } from "@/lib/auth-manager";
 import { changeLogger, type ChangeAction } from "@/lib/change-logger";
+import { detectMissingScope, generateScopeUpgradeUrl } from "@/lib/hubspot-scopes";
 
 const HUBSPOT_BASE_URL = "https://api.hubapi.com";
 const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
@@ -13,6 +14,10 @@ export interface HubSpotError {
   message: string;
   correlationId: string;
   context?: object;
+  /** Present when the error is a missing scope — contains the URL to re-authorize */
+  scopeUpgradeUrl?: string;
+  /** The specific scope that was missing */
+  missingScope?: string;
 }
 
 export interface ApiResponse<T = unknown> {
@@ -63,6 +68,8 @@ export interface ApiClient {
     delete(objectType: string, id: string): Promise<void>;
     batchCreate(objectType: string, records: object[]): Promise<BatchResult>;
     batchUpdate(objectType: string, records: { id: string; properties: object }[]): Promise<BatchResult>;
+    batchUpsert(objectType: string, records: object[], idProperty?: string): Promise<BatchResult>;
+    batchRead(objectType: string, ids: string[], properties?: string[], idProperty?: string): Promise<BatchResult>;
   };
   properties: {
     list(objectType: string): Promise<ApiResponse>;
@@ -73,6 +80,7 @@ export interface ApiClient {
   associations: {
     list(type: string, id: string, toType: string): Promise<ApiResponse>;
     create(type: string, id: string, toType: string, toId: string): Promise<ApiResponse>;
+    batchCreate(fromType: string, toType: string, pairs: Array<{ fromId: string; toId: string }>): Promise<BatchResult>;
   };
   pipelines: {
     list(objectType: string): Promise<ApiResponse>;
@@ -220,6 +228,8 @@ export class HubSpotApiError extends Error implements HubSpotError {
   category: string;
   correlationId: string;
   context?: object;
+  scopeUpgradeUrl?: string;
+  missingScope?: string;
 
   constructor(normalized: HubSpotError) {
     super(normalized.message);
@@ -227,6 +237,8 @@ export class HubSpotApiError extends Error implements HubSpotError {
     this.category = normalized.category;
     this.correlationId = normalized.correlationId;
     this.context = normalized.context;
+    this.scopeUpgradeUrl = normalized.scopeUpgradeUrl;
+    this.missingScope = normalized.missingScope;
   }
 }
 
@@ -272,9 +284,9 @@ class BaseHubSpotClient implements HubSpotClient {
   async batchProcess<T>(
     items: T[],
     processFn: (batch: T[]) => Promise<unknown[]>,
-    batchSize = 10
+    batchSize = 100
   ): Promise<BatchResult> {
-    const safeBatchSize = Math.max(1, Math.min(10, batchSize));
+    const safeBatchSize = Math.max(1, Math.min(100, batchSize));
     const results: BatchResult = { successes: [], errors: [] };
 
     for (let i = 0; i < items.length; i += safeBatchSize) {
@@ -371,13 +383,33 @@ async function normalizeError(response: Response): Promise<HubSpotError> {
       context?: object;
     };
 
-    return {
+    const normalized: HubSpotError = {
       statusCode: response.status,
       category: json.category || fallback.category,
       message: json.message || fallback.message,
       correlationId: json.correlationId || fallback.correlationId,
       context: json.context
     };
+
+    // Self-healing: detect missing scope on 403 and attach reauthorization URL
+    if (response.status === 403) {
+      const missing = detectMissingScope({ statusCode: 403, message: json.message });
+      if (missing) {
+        normalized.missingScope = missing;
+        const clientId = process.env.HUBSPOT_OAUTH_CLIENT_ID;
+        const redirectUri = process.env.HUBSPOT_OAUTH_REDIRECT_URI;
+        if (clientId && redirectUri) {
+          try {
+            const scopes = authManager.getScopes();
+            normalized.scopeUpgradeUrl = generateScopeUpgradeUrl(scopes, missing, clientId, redirectUri);
+          } catch {
+            // If we can't get current scopes, skip the upgrade URL
+          }
+        }
+      }
+    }
+
+    return normalized;
   } catch {
     return fallback;
   }
@@ -447,9 +479,11 @@ class HubSpotApiClient implements ApiClient {
     },
 
     update: async (objectType: string, id: string, properties: object): Promise<CrmRecord> => {
+      // Only fetch the properties we're about to update for the before-snapshot
+      const updateKeys = Object.keys(properties);
       let before: CrmRecord | null = null;
       try {
-        before = await this.crm.get(objectType, id);
+        before = await this.crm.get(objectType, id, updateKeys.length ? updateKeys : undefined);
       } catch {
         before = null;
       }
@@ -489,9 +523,10 @@ class HubSpotApiClient implements ApiClient {
     },
 
     delete: async (objectType: string, id: string): Promise<void> => {
+      // Only fetch minimal identifying properties for the before-snapshot
       let before: CrmRecord | null = null;
       try {
-        before = await this.crm.get(objectType, id);
+        before = await this.crm.get(objectType, id, ["email", "firstname", "lastname", "dealname", "name", "subject"]);
       } catch {
         before = null;
       }
@@ -570,6 +605,46 @@ class HubSpotApiClient implements ApiClient {
         description: `Batch update ${records.length} ${objectType} records`,
         after: { successes: result.successes.length, errors: result.errors.length },
         status: result.errors.length ? "error" : "success"
+      });
+
+      return result;
+    },
+
+    batchUpsert: async (objectType: string, records: object[], idProperty?: string): Promise<BatchResult> => {
+      const result = await this.base.batchProcess(records, async (batch) => {
+        const response = await this.base.post(`/crm/v3/objects/${objectType}/batch/upsert`, {
+          inputs: batch.map((properties) => ({
+            properties,
+            ...(idProperty ? { idProperty } : {}),
+          })),
+        });
+        const data = response.data as { results?: unknown[] };
+        return data.results ?? [];
+      });
+
+      await safeLog({
+        layer: "api",
+        module: "F1",
+        action: "update",
+        objectType,
+        recordId: `batch-upsert-${Date.now()}`,
+        description: `Batch upsert ${records.length} ${objectType} records`,
+        after: { successes: result.successes.length, errors: result.errors.length },
+        status: result.errors.length ? "error" : "success",
+      });
+
+      return result;
+    },
+
+    batchRead: async (objectType: string, ids: string[], properties?: string[], idProperty?: string): Promise<BatchResult> => {
+      const result = await this.base.batchProcess(ids, async (batch) => {
+        const response = await this.base.post(`/crm/v3/objects/${objectType}/batch/read`, {
+          inputs: batch.map((id) => ({ id })),
+          properties: properties ?? [],
+          ...(idProperty ? { idProperty } : {}),
+        });
+        const data = response.data as { results?: unknown[] };
+        return data.results ?? [];
       });
 
       return result;
@@ -698,6 +773,39 @@ class HubSpotApiClient implements ApiClient {
         });
         throw error;
       }
+    },
+
+    batchCreate: async (
+      fromType: string,
+      toType: string,
+      pairs: Array<{ fromId: string; toId: string }>
+    ): Promise<BatchResult> => {
+      // v4 batch endpoint supports up to 2,000 pairs per call
+      const result = await this.base.batchProcess(
+        pairs,
+        async (batch) => {
+          const response = await this.base.post(
+            `/crm/v4/associations/${fromType}/${toType}/batch/associate/default`,
+            { inputs: batch.map((p) => ({ from: { id: p.fromId }, to: { id: p.toId } })) }
+          );
+          const data = response.data as { results?: unknown[] };
+          return data.results ?? [];
+        },
+        100 // HubSpot supports 2,000 but keep batches reasonable for logging
+      );
+
+      await safeLog({
+        layer: "api",
+        module: "A6",
+        action: "associate",
+        objectType: `${fromType}->${toType}`,
+        recordId: `batch-${Date.now()}`,
+        description: `Batch associate ${pairs.length} ${fromType}->${toType} pairs`,
+        after: { successes: result.successes.length, errors: result.errors.length },
+        status: result.errors.length ? "error" : "success",
+      });
+
+      return result;
     }
   };
 

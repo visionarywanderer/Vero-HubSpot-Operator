@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { authManager } from "@/lib/auth-manager";
+import { buildCapabilities } from "@/lib/hubspot-scopes";
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -37,6 +38,7 @@ export async function POST(req: Request) {
       hubId: body.hubId ?? "",
       token: body.token,
       scopes: [],
+      capabilities: buildCapabilities([]),
       environment: body.environment ?? "production",
       createdAt: new Date().toISOString(),
       lastValidated: new Date().toISOString()

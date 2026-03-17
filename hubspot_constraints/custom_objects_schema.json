@@ -1,0 +1,67 @@
+{
+  "endpoint": "POST /crm/v3/schemas",
+  "requiredSubscription": "Enterprise tier",
+  "maxCustomObjects": 10,
+  "requiredFields": ["name", "labels", "primaryDisplayProperty", "properties"],
+  "labelRequiredFields": ["singular", "plural"],
+  "nameConstraints": {
+    "maxLength": 64,
+    "pattern": "^[a-zA-Z][a-zA-Z0-9_]*$",
+    "description": "Starts with letter, alphanumeric + underscores only",
+    "immutableAfterCreation": true,
+    "fullyQualifiedNameFormat": "p{HubID}_{object_name}"
+  },
+  "labelsImmutable": true,
+  "optionalSchemaFields": {
+    "description": "Description of the object's purpose",
+    "secondaryDisplayProperties": "Properties displayed below primary (first one becomes index page filter)",
+    "searchableProperties": "Properties indexed for search (max 20)",
+    "requiredProperties": "Properties mandatory when creating a record",
+    "associatedObjects": "Array of standard objects: CONTACT, COMPANY, DEAL, TICKET or custom objectTypeIds"
+  },
+  "primaryDisplayProperty": {
+    "description": "Must reference a string property in the properties array",
+    "mustBeStringType": true,
+    "canBeChangedAfterCreation": true
+  },
+  "limits": {
+    "maxCustomObjectsPerPortal": 10,
+    "maxUniqueValueProperties": 10,
+    "maxSearchableProperties": 20,
+    "maxPropertiesPerObject": 1000,
+    "maxSearchResults": 10000,
+    "maxSearchPageSize": 200
+  },
+  "propertyRules": "Same format as standard CRM properties — see property_types.json",
+  "objectTypeIdFormat": "2-XXXXX (assigned by HubSpot after creation)",
+  "schemaModification": {
+    "canChangeViaPATCH": ["requiredProperties", "searchableProperties", "primaryDisplayProperty", "secondaryDisplayProperties"],
+    "cannotChange": ["name", "labels"],
+    "addPropertiesEndpoint": "POST /crm/v3/properties/{objectTypeId}",
+    "addAssociationsEndpoint": "POST /crm/v3/schemas/{objectTypeId}/associations"
+  },
+  "deletion": {
+    "softDelete": "DELETE /crm/v3/schemas/{objectType}",
+    "hardDelete": "DELETE /crm/v3/schemas/{objectType}?archived=true",
+    "hardDeleteNote": "Allows recreating with same name",
+    "prerequisiteOrder": [
+      "1. Delete ALL record instances",
+      "2. Delete ALL associations",
+      "3. Delete ALL custom properties",
+      "4. Delete the schema"
+    ]
+  },
+  "autoAssociations": "Custom objects are automatically associated with emails, meetings, notes, tasks, calls, and conversations",
+  "compatibility": {
+    "workflows": "Enterprise tier — custom object workflows support standard actions",
+    "lists": "Enterprise tier — segment by custom object properties",
+    "reports": "Enterprise tier — single-object and cross-object reports",
+    "dynamicPages": "Enterprise tier — CMS dynamic pages from custom object data"
+  },
+  "standardObjectIdentifiers": {
+    "CONTACT": "0-1",
+    "COMPANY": "0-2",
+    "DEAL": "0-3",
+    "TICKET": "0-5"
+  }
+}
