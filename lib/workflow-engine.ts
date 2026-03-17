@@ -99,8 +99,8 @@ class HubSpotWorkflowEngine implements WorkflowEngine {
 
     for (const action of actions) {
       const actionId = String(action.actionId || "unknown");
-      const isBranch = action.type === "STATIC_BRANCH" || action.type === "LIST_BRANCH";
-      if (!action.actionTypeId && !isBranch) {
+      const branchTypes = ["STATIC_BRANCH", "LIST_BRANCH", "IF_BRANCH", "UNIFIED_BRANCH"];
+      if (!action.actionTypeId && !branchTypes.includes(String(action.type))) {
         errors.push(`Action ${actionId} missing actionTypeId`);
       }
 
