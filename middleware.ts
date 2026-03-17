@@ -26,9 +26,18 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // Let getToken use NextAuth's default cookie name detection (based on
-  // NEXTAUTH_URL protocol). No custom cookieName — this guarantees it
-  // reads the same cookie that NextAuth's route handler sets.
+  // --- API key authentication (for MCP server / external clients) ---
+  // Accepts: Authorization: Bearer <MCP_API_KEY>
+  const mcpApiKey = process.env.MCP_API_KEY;
+  if (mcpApiKey && path.startsWith("/api/")) {
+    const authHeader = req.headers.get("authorization");
+    if (authHeader?.startsWith("Bearer ") && authHeader.slice(7) === mcpApiKey) {
+      // Valid API key — skip session check and CSRF (MCP is a trusted server)
+      return NextResponse.next();
+    }
+  }
+
+  // --- Session authentication (for browser / UI users) ---
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
   if (!token) {
     if (path.startsWith("/api/")) {
