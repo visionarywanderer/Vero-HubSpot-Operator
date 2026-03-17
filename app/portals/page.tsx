@@ -71,6 +71,7 @@ function PortalsContent() {
       <DisconnectModal
         open={Boolean(disconnectPortal)}
         portalName={disconnectPortal?.name || ""}
+        hubId={disconnectPortal?.hubId || ""}
         onClose={() => setDisconnectPortalId(null)}
         onConfirm={async () => {
           if (!disconnectPortal) return;
