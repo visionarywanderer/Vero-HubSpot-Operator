@@ -29,12 +29,20 @@
  */
 
 // Load .env.local if present (tsx doesn't auto-load like Next.js does)
-// Use process.cwd() as primary path (set by .mcp.json "cwd" field)
 import { readFileSync, existsSync } from "node:fs";
-import { resolve, join } from "node:path";
+import { resolve, join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+// Derive the directory this script lives in (works regardless of cwd)
+const __scriptDir = (() => {
+  try { return dirname(fileURLToPath(import.meta.url)); } catch { /* fallback below */ }
+  try { if (import.meta.dirname) return import.meta.dirname; } catch { /* fallback below */ }
+  return process.cwd();
+})();
+
 const envCandidates = [
+  join(__scriptDir, ".env.local"),
   join(process.cwd(), ".env.local"),
-  resolve(import.meta.dirname ?? ".", ".env.local"),
 ];
 for (const envPath of envCandidates) {
   if (existsSync(envPath)) {
