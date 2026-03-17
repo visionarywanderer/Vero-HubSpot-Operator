@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireSession } from "@/lib/auth";
+import { isAuthenticated } from "@/lib/api-auth";
 import {
   createTemplateVersion,
   listAllTemplateIds,
@@ -8,15 +8,13 @@ import {
 import type { TemplateResources } from "@/lib/template-types";
 
 export async function GET() {
-  const session = await requireSession();
-  if (!session) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  if (!(await isAuthenticated())) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
   return NextResponse.json({ ok: true, templateIds: listAllTemplateIds() });
 }
 
 export async function POST(req: Request) {
-  const session = await requireSession();
-  if (!session) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  if (!(await isAuthenticated())) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
   const body = (await req.json()) as {
     templateId?: string;
@@ -35,7 +33,7 @@ export async function POST(req: Request) {
     version,
     body.resources,
     body.description,
-    session.user?.email || undefined
+    undefined
   );
 
   return NextResponse.json({ ok: true, version: tv });

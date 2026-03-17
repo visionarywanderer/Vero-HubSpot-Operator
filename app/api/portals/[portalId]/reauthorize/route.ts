@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
-import { requireSession } from "@/lib/auth";
+import { isAuthenticated } from "@/lib/api-auth";
 import { authManager } from "@/lib/auth-manager";
 import { generateScopeUpgradeUrl, getRequiredScopes, getOptionalScopes } from "@/lib/hubspot-scopes";
 
 export async function GET(_req: Request, context: any) {
   const params = await context.params;
-  const session = await requireSession();
-  if (!session) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  if (!(await isAuthenticated())) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
   const clientId = process.env.HUBSPOT_OAUTH_CLIENT_ID;
   const redirectUri = process.env.HUBSPOT_OAUTH_REDIRECT_URI;
@@ -44,8 +43,7 @@ export async function GET(_req: Request, context: any) {
 /** POST with a specific missing scope to get a targeted upgrade URL */
 export async function POST(req: Request, context: any) {
   const params = await context.params;
-  const session = await requireSession();
-  if (!session) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  if (!(await isAuthenticated())) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
   const clientId = process.env.HUBSPOT_OAUTH_CLIENT_ID;
   const redirectUri = process.env.HUBSPOT_OAUTH_REDIRECT_URI;

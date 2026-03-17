@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireSession } from "@/lib/auth";
+import { isAuthenticated } from "@/lib/api-auth";
 import { extractPortalConfig, exportAsTemplate } from "@/lib/portal-cloner";
 
 /**
@@ -7,8 +7,7 @@ import { extractPortalConfig, exportAsTemplate } from "@/lib/portal-cloner";
  * Returns a normalized template that can be installed on another portal.
  */
 export async function POST(req: Request) {
-  const session = await requireSession();
-  if (!session) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  if (!(await isAuthenticated())) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
   const body = (await req.json()) as {
     sourcePortalId?: string;
