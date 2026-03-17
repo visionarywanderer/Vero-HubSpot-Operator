@@ -28,19 +28,31 @@
  */
 
 // Load .env.local if present (tsx doesn't auto-load like Next.js does)
+// Use process.cwd() as primary path (set by .mcp.json "cwd" field)
 import { readFileSync, existsSync } from "node:fs";
-import { resolve } from "node:path";
-const envLocalPath = resolve(import.meta.dirname ?? ".", ".env.local");
-if (existsSync(envLocalPath)) {
-  for (const line of readFileSync(envLocalPath, "utf8").split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    const eqIdx = trimmed.indexOf("=");
-    if (eqIdx < 1) continue;
-    const key = trimmed.slice(0, eqIdx).trim();
-    const val = trimmed.slice(eqIdx + 1).trim();
-    if (!process.env[key]) process.env[key] = val;
+import { resolve, join } from "node:path";
+const envCandidates = [
+  join(process.cwd(), ".env.local"),
+  resolve(import.meta.dirname ?? ".", ".env.local"),
+];
+for (const envPath of envCandidates) {
+  if (existsSync(envPath)) {
+    for (const line of readFileSync(envPath, "utf8").split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const eqIdx = trimmed.indexOf("=");
+      if (eqIdx < 1) continue;
+      const key = trimmed.slice(0, eqIdx).trim();
+      const val = trimmed.slice(eqIdx + 1).trim();
+      if (!process.env[key]) process.env[key] = val;
+    }
+    break; // Only load the first found .env.local
   }
+}
+
+// Verify critical env vars are present
+if (!process.env.ENCRYPTION_KEY) {
+  process.stderr.write("[mcp-server] WARNING: ENCRYPTION_KEY not found in process.env or .env.local. HubSpot API calls will fail.\n");
 }
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
