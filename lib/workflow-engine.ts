@@ -55,8 +55,8 @@ export function normalizeWorkflowDefaults(spec: WorkflowSpec): WorkflowSpec {
 
 class HubSpotWorkflowEngine implements WorkflowEngine {
   private async enforceWriteGovernance(moduleCode: "B2" | "B4" | "B5"): Promise<string[]> {
-    const isFirstSession = authManager.isFirstSessionForActivePortal();
     await authManager.ensureValidatedForSession();
+    const isFirstSession = authManager.isFirstSessionForActivePortal();
 
     const portal = authManager.getActivePortal();
     const writeGate = canWriteInEnvironment({
