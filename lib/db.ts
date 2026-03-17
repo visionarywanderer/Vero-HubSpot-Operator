@@ -4,8 +4,15 @@ import path from "path";
 
 // Resolve project root: DATABASE_PATH env var (set by Claude Desktop config) > process.cwd()
 // process.cwd() works in Next.js/Turbopack; DATABASE_PATH is needed for MCP STDIO (different cwd)
-const DB_PATH = process.env.DATABASE_PATH || path.join(process.cwd(), "data", "vero.db");
-mkdirSync(path.dirname(DB_PATH), { recursive: true });
+const preferredPath = process.env.DATABASE_PATH || path.join(process.cwd(), "data", "vero.db");
+let DB_PATH = preferredPath;
+try {
+  mkdirSync(path.dirname(preferredPath), { recursive: true });
+} catch {
+  // Volume not writable — fall back to app directory
+  DB_PATH = path.join(process.cwd(), "data", "vero.db");
+  mkdirSync(path.dirname(DB_PATH), { recursive: true });
+}
 
 const db = new Database(DB_PATH);
 db.pragma("journal_mode = WAL");

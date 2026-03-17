@@ -42,4 +42,6 @@ ENV DATABASE_PATH=/data/vero.db
 
 USER nextjs
 EXPOSE 8080
-CMD ["node", "server.js"]
+
+# Ensure /data is writable even after volume mount, then start
+CMD ["sh", "-c", "mkdir -p /data 2>/dev/null; node server.js"]
