@@ -1,12 +1,10 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { isAuthenticated } from "@/lib/api-auth";
 import { portalConfigStore } from "@/lib/portal-config-store";
 
 export async function GET(_req: Request, context: any) {
   const params = await context.params;
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  if (!(await isAuthenticated())) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
   const config = await portalConfigStore.load(params.portalId);
   return NextResponse.json({ ok: true, config });
@@ -14,8 +12,7 @@ export async function GET(_req: Request, context: any) {
 
 export async function PATCH(req: Request, context: any) {
   const params = await context.params;
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  if (!(await isAuthenticated())) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
   const body = (await req.json()) as { updates?: Record<string, unknown>; path?: string; value?: unknown };
 

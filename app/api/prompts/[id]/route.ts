@@ -1,12 +1,10 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { isAuthenticated } from "@/lib/api-auth";
 import { promptLibrary } from "@/lib/prompt-library";
 
 export async function GET(_req: Request, context: any) {
   const params = await context.params;
-  const session = await getServerSession(authOptions);
-  if (!session) {
+  if (!(await isAuthenticated())) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
@@ -20,8 +18,7 @@ export async function GET(_req: Request, context: any) {
 
 export async function DELETE(_req: Request, context: any) {
   const params = await context.params;
-  const session = await getServerSession(authOptions);
-  if (!session) {
+  if (!(await isAuthenticated())) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 

@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { isAuthenticated } from "@/lib/api-auth";
 import { authManager } from "@/lib/auth-manager";
 import { pipelineManager, type PipelineObjectType } from "@/lib/pipeline-manager";
 
@@ -14,8 +13,7 @@ function portalFromUrl(req: Request): string | null {
 
 export async function GET(req: Request, context: any) {
   const params = await context.params;
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  if (!(await isAuthenticated())) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
   const objectType = parseObjectType(params.objectType);
   const portalId = portalFromUrl(req);
@@ -27,8 +25,7 @@ export async function GET(req: Request, context: any) {
 
 export async function POST(req: Request, context: any) {
   const params = await context.params;
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  if (!(await isAuthenticated())) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
   const objectType = parseObjectType(params.objectType);
   const body = (await req.json()) as { portalId?: string; stage?: Record<string, unknown> };

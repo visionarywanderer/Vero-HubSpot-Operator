@@ -1,12 +1,10 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { isAuthenticated } from "@/lib/api-auth";
 import { authManager } from "@/lib/auth-manager";
 import { buildCapabilities } from "@/lib/hubspot-scopes";
 
 export async function GET() {
-  const session = await getServerSession(authOptions);
-  if (!session) {
+  if (!(await isAuthenticated())) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
@@ -14,8 +12,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session) {
+  if (!(await isAuthenticated())) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 

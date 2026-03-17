@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { isAuthenticated } from "@/lib/api-auth";
 import { authManager } from "@/lib/auth-manager";
 import { listManager } from "@/lib/list-manager";
 
@@ -10,8 +9,7 @@ function portalFromUrl(req: Request): string | null {
 
 export async function GET(req: Request, context: any) {
   const params = await context.params;
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  if (!(await isAuthenticated())) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
   const portalId = portalFromUrl(req);
   if (!portalId) return NextResponse.json({ ok: false, error: "portalId is required" }, { status: 400 });
@@ -22,8 +20,7 @@ export async function GET(req: Request, context: any) {
 
 export async function PUT(req: Request, context: any) {
   const params = await context.params;
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  if (!(await isAuthenticated())) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
   const body = (await req.json()) as {
     portalId?: string;
@@ -45,8 +42,7 @@ export async function PUT(req: Request, context: any) {
 
 export async function DELETE(req: Request, context: any) {
   const params = await context.params;
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  if (!(await isAuthenticated())) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
   const portalId = portalFromUrl(req);
   if (!portalId) return NextResponse.json({ ok: false, error: "portalId is required" }, { status: 400 });
