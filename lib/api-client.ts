@@ -751,7 +751,7 @@ class HubSpotApiClient implements ApiClient {
       this.base.get(`/crm/v4/objects/${type}/${id}/associations/${toType}`),
     create: async (type: string, id: string, toType: string, toId: string): Promise<ApiResponse> => {
       try {
-        const result = await this.base.put(`/crm/v4/objects/${type}/${id}/associations/${toType}/${toId}`, {});
+        const result = await this.base.put(`/crm/v4/objects/${type}/${id}/associations/${toType}/${toId}`, [] as unknown as object);
         await safeLog({
           layer: "api",
           module: "A6",
