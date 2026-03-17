@@ -3,12 +3,14 @@
   "uid": "vero-hubspot-operator",
   "description": "Vero Operations multi-portal operator app for HubSpot automation and governance.",
   "allowedUrls": [
-    "https://vero-hubspot-operator.onrender.com"
+    "https://vero-hubspot-operator.onrender.com",
+    "https://vero-hubspot-operator-production.up.railway.app"
   ],
   "auth": {
     "redirectUrls": [
       "http://localhost:3000/api/portals/callback",
-      "https://vero-hubspot-operator.onrender.com/api/portals/callback"
+      "https://vero-hubspot-operator.onrender.com/api/portals/callback",
+      "https://vero-hubspot-operator-production.up.railway.app/api/portals/callback"
     ],
     "requiredScopes": [
       "oauth",
@@ -34,8 +36,8 @@
   },
   "support": {
     "supportEmail": "ops@verodigital.co",
-    "documentationUrl": "https://vero-hubspot-operator.onrender.com/docs",
-    "supportUrl": "https://vero-hubspot-operator.onrender.com",
+    "documentationUrl": "https://vero-hubspot-operator-production.up.railway.app/docs",
+    "supportUrl": "https://vero-hubspot-operator-production.up.railway.app",
     "supportPhone": "+15550000000"
   },
   "extensions": {
