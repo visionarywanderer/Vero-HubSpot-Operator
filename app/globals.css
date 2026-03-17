@@ -210,6 +210,11 @@ a:hover { text-decoration: underline; }
   font-weight: 500;
 }
 
+.external-icon {
+  font-size: 0.75em;
+  opacity: 0.5;
+}
+
 /* Sidebar Footer */
 .sidebar-footer {
   margin-top: auto;
