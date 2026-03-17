@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireSession } from "@/lib/auth";
+import { isAuthenticated } from "@/lib/api-auth";
 import { readdir, readFile } from "fs/promises";
 import path from "path";
 
@@ -24,8 +24,7 @@ function extractPurpose(content: string): string {
 }
 
 export async function GET() {
-  const session = await requireSession();
-  if (!session) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  if (!(await isAuthenticated())) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
   try {
     const files = await readdir(PACKS_DIR);

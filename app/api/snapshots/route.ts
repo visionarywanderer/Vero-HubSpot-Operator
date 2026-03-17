@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
-import { requireSession } from "@/lib/auth";
+import { isAuthenticated } from "@/lib/api-auth";
 import { listSnapshots } from "@/lib/rollback-manager";
 
 export async function GET(req: Request) {
-  const session = await requireSession();
-  if (!session) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  if (!(await isAuthenticated())) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
   const { searchParams } = new URL(req.url);
   const portalId = searchParams.get("portalId");

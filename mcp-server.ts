@@ -218,10 +218,14 @@ server.tool(
     portalId: z.string().optional(),
   },
   async ({ objectType, name, label, type, fieldType, groupName, description, options, portalId }) => {
+    const spec: Record<string, unknown> = { name, label, type, fieldType };
+    if (groupName) spec.groupName = groupName;
+    if (description) spec.description = description;
+    if (options) spec.options = options;
     const data = await api({
       method: "POST",
       path: "/api/properties",
-      body: { objectType, name, label, type, fieldType, groupName, description, options, portalId },
+      body: { objectType, spec, portalId },
     });
     return textResult(data);
   }
@@ -329,7 +333,7 @@ server.tool(
     const data = await api({
       method: "POST",
       path: "/api/pipelines",
-      body: { objectType, label, stages, portalId },
+      body: { objectType, spec: { label, stages }, portalId },
     });
     return textResult(data);
   }
@@ -486,7 +490,7 @@ server.tool(
     const data = await api({
       method: "POST",
       path: "/api/lists",
-      body: { name, objectTypeId, processingType, filterBranch, portalId },
+      body: { spec: { name, objectTypeId, processingType, filterBranch }, portalId },
     });
     return textResult(data);
   }
@@ -538,7 +542,7 @@ server.tool(
     const data = await api({
       method: "POST",
       path: "/api/workflows/deploy",
-      body: { workflow, portalId },
+      body: { spec: workflow, portalId },
     });
     return textResult(data);
   }
@@ -754,7 +758,14 @@ server.tool(
     const data = await api({
       method: "POST",
       path: "/api/clone/extract",
-      body: { portalId, includeProperties, includePipelines, includeLists },
+      body: {
+        sourcePortalId: portalId,
+        options: {
+          properties: includeProperties ?? true,
+          pipelines: includePipelines ?? true,
+          lists: includeLists ?? true,
+        },
+      },
     });
     return textResult(data);
   }

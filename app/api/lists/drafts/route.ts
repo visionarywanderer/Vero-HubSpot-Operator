@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
-import { requireSession } from "@/lib/auth";
+import { isAuthenticated } from "@/lib/api-auth";
 import { listDrafts, saveDraft } from "@/lib/draft-store";
 
 export async function GET(req: Request) {
-  const session = await requireSession();
-  if (!session) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  if (!(await isAuthenticated())) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
   const portalId = new URL(req.url).searchParams.get("portalId");
   if (!portalId) return NextResponse.json({ ok: false, error: "portalId is required" }, { status: 400 });
@@ -13,8 +12,7 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const session = await requireSession();
-  if (!session) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  if (!(await isAuthenticated())) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
   const body = (await req.json()) as { portalId?: string; name?: string; spec?: Record<string, unknown> };
   if (!body.portalId || !body.spec) {

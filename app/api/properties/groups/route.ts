@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
-import { requireSession } from "@/lib/auth";
+import { isAuthenticated } from "@/lib/api-auth";
 import { authManager } from "@/lib/auth-manager";
 import { propertyManager } from "@/lib/property-manager";
 
 export async function GET(req: Request) {
-  const session = await requireSession();
-  if (!session) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  if (!(await isAuthenticated())) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
   const url = new URL(req.url);
   const portalId = url.searchParams.get("portalId");
@@ -19,8 +18,7 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const session = await requireSession();
-  if (!session) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  if (!(await isAuthenticated())) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
   const body = (await req.json()) as { portalId?: string; objectType?: string; spec?: { name: string; label: string; displayOrder?: number } };
   if (!body.portalId || !body.objectType || !body.spec) {
