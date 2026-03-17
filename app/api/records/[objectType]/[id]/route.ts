@@ -8,7 +8,7 @@ export async function GET(
   { params }: { params: Promise<{ objectType: string; id: string }> }
 ) {
   const { objectType, id } = await params;
-  const portalId = req.nextUrl.searchParams.get("portalId") || undefined;
+  const portalId = req.nextUrl.searchParams.get("portalId") ?? "";
   const propsParam = req.nextUrl.searchParams.get("properties");
   const properties = propsParam ? propsParam.split(",") : undefined;
 
@@ -25,7 +25,7 @@ export async function PATCH(
 ) {
   const { objectType, id } = await params;
   const body = await req.json();
-  const portalId = body.portalId || req.nextUrl.searchParams.get("portalId") || undefined;
+  const portalId = body.portalId || req.nextUrl.searchParams.get("portalId") || "";
   const properties = body.properties;
 
   if (!properties) {
