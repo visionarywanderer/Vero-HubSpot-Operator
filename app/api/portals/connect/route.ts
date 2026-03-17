@@ -10,17 +10,16 @@ const OAUTH_SCOPES = [
   "crm.objects.companies.write",
   "crm.objects.deals.read",
   "crm.objects.deals.write",
+  "crm.objects.owners.read",
   "crm.schemas.contacts.read",
   "crm.schemas.contacts.write",
   "crm.schemas.companies.read",
   "crm.schemas.companies.write",
   "crm.schemas.deals.read",
   "crm.schemas.deals.write",
-  "automation",
-  "tickets",
-  "content",
-  "forms",
-  "files"
+  "crm.lists.read",
+  "crm.lists.write",
+  "automation"
 ];
 
 export async function GET() {
