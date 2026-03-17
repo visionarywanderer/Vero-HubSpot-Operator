@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { useSession } from "next-auth/react";
 import { apiGet } from "@/lib/api";
 
 export type PortalCapabilities = {
@@ -55,6 +56,7 @@ const PortalContext = createContext<PortalContextValue | null>(null);
 const STORAGE_KEY = "vero_active_portal_id";
 
 export function PortalProvider({ children }: { children: React.ReactNode }) {
+  const { status } = useSession();
   const [portals, setPortals] = useState<Portal[]>([]);
   const [activePortalId, setActivePortalId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -78,9 +80,16 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // Only fetch portals when the user is authenticated.
+  // Without this guard, the /api/portals call returns 401 on the login page,
+  // lib/api.ts redirects to /login, and the page reloads in an infinite loop.
   useEffect(() => {
-    refresh().catch(() => setLoading(false));
-  }, [refresh]);
+    if (status === "authenticated") {
+      refresh().catch(() => setLoading(false));
+    } else if (status === "unauthenticated") {
+      setLoading(false);
+    }
+  }, [refresh, status]);
 
   const setActivePortal = useCallback(async (portalId: string) => {
     setActivePortalId(portalId);
