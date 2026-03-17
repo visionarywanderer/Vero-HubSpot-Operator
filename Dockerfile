@@ -26,8 +26,6 @@ ENV PORT=8080
 # better-sqlite3 needs libstdc++ at runtime
 RUN apk add --no-cache libstdc++
 
-RUN addgroup -S nodejs && adduser -S nextjs -G nodejs
-
 # Copy standalone build (includes most node_modules)
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
@@ -37,11 +35,8 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/node_modules ./node_modules
 
 # Create data directory for SQLite (Railway volume mounts here)
-RUN mkdir -p /data && chown nextjs:nodejs /data
+RUN mkdir -p /data
 ENV DATABASE_PATH=/data/vero.db
 
-USER nextjs
 EXPOSE 8080
-
-# Ensure /data is writable even after volume mount, then start
-CMD ["sh", "-c", "mkdir -p /data 2>/dev/null; node server.js"]
+CMD ["node", "server.js"]
