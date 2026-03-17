@@ -28,17 +28,13 @@ RUN apk add --no-cache libstdc++
 
 RUN addgroup -S nodejs && adduser -S nextjs -G nodejs
 
-# Copy standalone build
-COPY --from=builder /app/public ./public
+# Copy standalone build (includes most node_modules)
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder /app/public ./public
 
-# Copy better-sqlite3 native binding into standalone node_modules
-COPY --from=builder /app/node_modules/better-sqlite3 ./node_modules/better-sqlite3
-COPY --from=builder /app/node_modules/bindings ./node_modules/bindings
-COPY --from=builder /app/node_modules/file-uri-to-path ./node_modules/file-uri-to-path
-COPY --from=builder /app/node_modules/prebuild-install ./node_modules/prebuild-install
-COPY --from=builder /app/node_modules/node-addon-api ./node_modules/node-addon-api
+# Overlay full node_modules so native bindings (better-sqlite3) are present
+COPY --from=builder /app/node_modules ./node_modules
 
 # Create data directory for SQLite (Railway volume mounts here)
 RUN mkdir -p /data && chown nextjs:nodejs /data
