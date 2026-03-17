@@ -27,6 +27,7 @@ export async function GET() {
         database: dbOk,
       },
       portals: { count: portalCount },
+      mcpApiKey: Boolean(env.MCP_API_KEY),
     });
   } catch {
     // Always return 200 so Railway healthcheck passes
