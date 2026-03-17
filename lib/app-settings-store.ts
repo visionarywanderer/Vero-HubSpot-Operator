@@ -13,7 +13,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   generationModel: "sonnet",
   promptCaching: true,
   monthlySpendLimit: 500,
-  usersAllowlist: []
+  usersAllowlist: [],
 };
 
 class AppSettingsStore {
@@ -54,7 +54,7 @@ class AppSettingsStore {
       generationModel: (this.getSetting("generationModel") as AppSettings["generationModel"]) || DEFAULT_SETTINGS.generationModel,
       promptCaching: (this.getSetting("promptCaching") as boolean | undefined) ?? DEFAULT_SETTINGS.promptCaching,
       monthlySpendLimit: Number(this.getSetting("monthlySpendLimit") ?? DEFAULT_SETTINGS.monthlySpendLimit),
-      usersAllowlist: this.listUsers()
+      usersAllowlist: this.listUsers(),
     };
   }
 

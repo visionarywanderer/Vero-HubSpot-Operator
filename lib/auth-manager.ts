@@ -1,6 +1,12 @@
 import { AsyncLocalStorage } from "async_hooks";
 import db from "@/lib/db";
 import { decryptText, encryptText } from "@/lib/crypto";
+import {
+  buildCapabilities,
+  detectMissingScope,
+  generateScopeUpgradeUrl,
+  type PortalCapabilities,
+} from "@/lib/hubspot-scopes";
 
 type PortalContext = { portalId: string };
 const portalContext = new AsyncLocalStorage<PortalContext>();
@@ -13,6 +19,7 @@ export interface PortalConfig {
   refreshToken?: string;
   expiresAt?: number;
   scopes: string[];
+  capabilities: PortalCapabilities;
   installedBy?: string;
   environment: "production" | "sandbox";
   createdAt: string;
@@ -24,6 +31,7 @@ export interface PortalSummary {
   name: string;
   hubId: string;
   scopes: string[];
+  capabilities: PortalCapabilities;
   environment: "production" | "sandbox";
   createdAt: string;
   lastValidated: string;
@@ -36,6 +44,13 @@ export interface OAuthCallbackInput {
   expiresIn?: number;
   scopes?: string[];
   installedBy?: string;
+  portalName?: string;
+}
+
+export interface ScopeUpgradeResult {
+  error: "missing_scope";
+  requiredScope: string;
+  reconnectUrl: string;
 }
 
 export interface AuthManager {
@@ -47,7 +62,11 @@ export interface AuthManager {
   getActivePortal(portalId?: string): PortalConfig;
   getToken(portalId?: string): string;
   getScopes(portalId?: string): string[];
+  getCapabilities(portalId?: string): PortalCapabilities;
   hasScope(scope: string, portalId?: string): boolean;
+  hasCapability(feature: keyof PortalCapabilities, portalId?: string): boolean;
+  requireCapability(feature: keyof PortalCapabilities, portalId?: string): void;
+  handleScopeError(error: unknown, portalId?: string): ScopeUpgradeResult | null;
   validateToken(portalId?: string): Promise<boolean>;
   isFirstSessionForActivePortal(portalId?: string): boolean;
   ensureValidatedForSession(portalId?: string): Promise<void>;
@@ -71,6 +90,7 @@ type PortalRow = {
 };
 
 function rowToPortal(row: PortalRow): PortalConfig {
+  const scopes = row.scopes ? (JSON.parse(row.scopes) as string[]) : [];
   return {
     id: row.hub_id,
     name: row.name || `Hub ${row.hub_id}`,
@@ -78,7 +98,8 @@ function rowToPortal(row: PortalRow): PortalConfig {
     token: row.access_token || "",
     refreshToken: row.refresh_token || undefined,
     expiresAt: row.expires_at || undefined,
-    scopes: row.scopes ? (JSON.parse(row.scopes) as string[]) : [],
+    scopes,
+    capabilities: buildCapabilities(scopes),
     installedBy: row.installed_by || undefined,
     environment: row.environment === "production" ? "production" : "sandbox",
     createdAt: row.created_at || new Date().toISOString(),
@@ -92,6 +113,7 @@ function summaryFromPortal(portal: PortalConfig): PortalSummary {
     name: portal.name,
     hubId: portal.hubId,
     scopes: portal.scopes,
+    capabilities: portal.capabilities,
     environment: portal.environment,
     createdAt: portal.createdAt,
     lastValidated: portal.lastValidated
@@ -99,16 +121,39 @@ function summaryFromPortal(portal: PortalConfig): PortalSummary {
 }
 
 async function validateAndDetectScopes(token: string): Promise<{ ok: boolean; scopes: string[]; hubId: string; user?: string }> {
-  const contactsResp = await fetch("https://api.hubapi.com/crm/v3/objects/contacts?limit=1", {
+  const parseErrorDetail = async (resp: Response): Promise<string> => {
+    try {
+      const data = (await resp.json()) as { message?: string; category?: string };
+      return [data.category, data.message].filter(Boolean).join(": ");
+    } catch {
+      return "";
+    }
+  };
+
+  const contactsResp = await fetch("https://api.hubapi.com/crm/v3/objects/contacts?limit=1&properties=email", {
     headers: { Authorization: `Bearer ${token}` },
     cache: "no-store"
   });
 
   if (contactsResp.status === 401) return { ok: false, scopes: [], hubId: "" };
-  if (!contactsResp.ok) throw new Error("HubSpot token validation failed");
+  if (!contactsResp.ok) {
+    const detail = await parseErrorDetail(contactsResp);
+    if (contactsResp.status === 403) {
+      throw new Error(detail ? `HubSpot token is missing required scopes (${detail})` : "HubSpot token is missing required scopes");
+    }
+    throw new Error(detail ? `HubSpot token validation failed (${detail})` : "HubSpot token validation failed");
+  }
 
-  const scopeResp = await fetch(`https://api.hubapi.com/oauth/v1/access-tokens/${token}`, { cache: "no-store" });
-  if (!scopeResp.ok) throw new Error("HubSpot scope detection failed");
+  if (token.startsWith("pat-")) {
+    // Private app tokens can't be introspected via /oauth/v1/access-tokens
+    return { ok: true, scopes: [], hubId: "" };
+  }
+
+  const scopeResp = await fetch(`https://api.hubapi.com/oauth/v1/access-tokens/${encodeURIComponent(token)}`, { cache: "no-store" });
+  if (!scopeResp.ok) {
+    const detail = await parseErrorDetail(scopeResp);
+    throw new Error(detail ? `HubSpot scope detection failed (${detail})` : "HubSpot scope detection failed");
+  }
 
   const tokenInfo = (await scopeResp.json()) as {
     scopes?: string[];
@@ -224,12 +269,27 @@ class SqliteAuthManager implements AuthManager {
 
     if (!tokenData.access_token) return;
 
+    // After refresh, re-introspect to get the latest granted scopes
+    let newScopes = portal.scopes;
+    try {
+      const scopeResp = await fetch(`https://api.hubapi.com/oauth/v1/access-tokens/${encodeURIComponent(tokenData.access_token)}`, { cache: "no-store" });
+      if (scopeResp.ok) {
+        const scopeInfo = (await scopeResp.json()) as { scopes?: string[] };
+        if (scopeInfo.scopes?.length) {
+          newScopes = scopeInfo.scopes;
+        }
+      }
+    } catch {
+      // Keep existing scopes if introspection fails
+    }
+
     db.prepare(
-      "UPDATE portals SET access_token = ?, refresh_token = ?, expires_at = ?, last_validated = ?, last_used = ? WHERE hub_id = ?"
+      "UPDATE portals SET access_token = ?, refresh_token = ?, expires_at = ?, scopes = ?, last_validated = ?, last_used = ? WHERE hub_id = ?"
     ).run(
       encryptText(tokenData.access_token),
       tokenData.refresh_token ? encryptText(tokenData.refresh_token) : portal.refreshToken,
       tokenData.expires_in ? Date.now() + tokenData.expires_in * 1000 : portal.expiresAt || null,
+      JSON.stringify(newScopes),
       new Date().toISOString(),
       new Date().toISOString(),
       portal.hubId
@@ -263,13 +323,13 @@ class SqliteAuthManager implements AuthManager {
   async handleCallback(input: OAuthCallbackInput): Promise<void> {
     this.savePortal({
       hubId: String(input.hubId),
-      name: `Hub ${input.hubId}`,
+      name: input.portalName || `Hub ${input.hubId}`,
       accessTokenEnc: encryptText(input.accessToken),
       refreshTokenEnc: input.refreshToken ? encryptText(input.refreshToken) : undefined,
       expiresAt: input.expiresIn ? Date.now() + input.expiresIn * 1000 : undefined,
       scopes: input.scopes || [],
       installedBy: input.installedBy,
-      environment: "sandbox",
+      environment: "production",
       lastValidated: new Date().toISOString()
     });
 
@@ -317,8 +377,44 @@ class SqliteAuthManager implements AuthManager {
     return this.getActivePortal(portalId).scopes;
   }
 
+  getCapabilities(portalId?: string): PortalCapabilities {
+    return this.getActivePortal(portalId).capabilities;
+  }
+
   hasScope(scope: string, portalId?: string): boolean {
     return this.getScopes(portalId).includes(scope);
+  }
+
+  hasCapability(feature: keyof PortalCapabilities, portalId?: string): boolean {
+    return this.getCapabilities(portalId)[feature];
+  }
+
+  requireCapability(feature: keyof PortalCapabilities, portalId?: string): void {
+    if (!this.hasCapability(feature, portalId)) {
+      throw new Error(`Feature "${feature}" is not available for this portal. The required scope was not granted.`);
+    }
+  }
+
+  /**
+   * Detect a missing scope from a HubSpot API error and generate a reauthorization URL.
+   * Returns null if this is not a scope-related error.
+   */
+  handleScopeError(error: unknown, portalId?: string): ScopeUpgradeResult | null {
+    const missingScope = detectMissingScope(error as Record<string, unknown>);
+    if (!missingScope) return null;
+
+    const clientId = process.env.HUBSPOT_OAUTH_CLIENT_ID;
+    const redirectUri = process.env.HUBSPOT_OAUTH_REDIRECT_URI;
+    if (!clientId || !redirectUri) return null;
+
+    const portal = this.getActivePortal(portalId);
+    const reconnectUrl = generateScopeUpgradeUrl(portal.scopes, missingScope, clientId, redirectUri);
+
+    return {
+      error: "missing_scope",
+      requiredScope: missingScope,
+      reconnectUrl
+    };
   }
 
   isFirstSessionForActivePortal(portalId?: string): boolean {
@@ -334,6 +430,7 @@ class SqliteAuthManager implements AuthManager {
     const validation = await validateAndDetectScopes(token);
     if (!validation.ok) return false;
 
+    // Update stored scopes to reflect current granted scopes
     db.prepare("UPDATE portals SET scopes = ?, last_validated = ? WHERE hub_id = ?").run(
       JSON.stringify(validation.scopes),
       new Date().toISOString(),

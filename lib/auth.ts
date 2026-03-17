@@ -1,7 +1,16 @@
-import type { NextAuthOptions } from "next-auth";
+import type { NextAuthOptions, Session } from "next-auth";
+import { getServerSession } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import { getEnv } from "@/lib/env";
 import { appSettingsStore } from "@/lib/app-settings-store";
+
+/**
+ * Convenience wrapper: returns the current session via next-auth.
+ * All API routes should use this instead of calling getServerSession directly.
+ */
+export async function requireSession(): Promise<Session | null> {
+  return getServerSession(authOptions);
+}
 
 type GoogleProfile = {
   email?: string;

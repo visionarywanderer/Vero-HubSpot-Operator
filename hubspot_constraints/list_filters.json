@@ -1,0 +1,200 @@
+{
+  "validProcessingTypes": ["DYNAMIC", "MANUAL", "SNAPSHOT"],
+  "processingTypeDifferences": {
+    "MANUAL": "No filters. Membership managed via API only.",
+    "DYNAMIC": "Requires filterBranch. Membership auto-updated continuously. Cannot add/remove members via API.",
+    "SNAPSHOT": "Requires filterBranch at creation. Processes once. After initial processing, membership can be managed via API like MANUAL."
+  },
+  "requiredListFields": ["name", "objectTypeId", "processingType"],
+  "optionalListFields": ["filterBranch", "customProperties", "listFolderId", "listPermissions", "membershipSettings"],
+  "nameConstraint": "Must be globally unique across all public lists in the portal",
+  "filterBranchStructure": {
+    "root": {
+      "filterBranchType": "OR",
+      "filterBranchOperator": "OR",
+      "filters": "MUST be empty array []",
+      "filterBranches": "Array of AND child branches"
+    },
+    "childBranch": {
+      "filterBranchType": "AND",
+      "filterBranchOperator": "AND",
+      "filters": "Array of filter conditions",
+      "filterBranches": "Array of special branches (UNIFIED_EVENTS, ASSOCIATION) or empty []"
+    },
+    "logic": "(branch1_filters AND) OR (branch2_filters AND) OR ...",
+    "validFilterBranchTypes": ["OR", "AND", "UNIFIED_EVENTS", "ASSOCIATION", "NOT_ALL", "NOT_ANY", "RESTRICTED", "PROPERTY_ASSOCIATION"]
+  },
+  "validFilterTypes": {
+    "PROPERTY": "Filter by CRM property value — uses operation object",
+    "FORM_SUBMISSION": "Form completion history",
+    "FORM_SUBMISSION_ON_PAGE": "Form fills on specific pages",
+    "EMAIL_EVENT": "Email engagement (open, click, receive)",
+    "EMAIL_SUBSCRIPTION": "Email subscription opt-in status",
+    "PAGE_VIEW": "Specific page visits",
+    "EVENT": "Specific event occurrence",
+    "IN_LIST": "List/import/workflow membership",
+    "CTA": "Call-to-action engagement",
+    "ADS_TIME": "Ad exposure within timeframes",
+    "ADS_SEARCH": "Ad interaction behaviors",
+    "PRIVACY": "Privacy consent status",
+    "SURVEY_MONKEY": "Survey response completion",
+    "SURVEY_MONKEY_VALUE": "Specific survey answers — uses operation object",
+    "WEBINAR": "Webinar registration/attendance",
+    "INTEGRATION_EVENT": "Integration event properties — uses operation object"
+  },
+  "objectTypeIds": {
+    "contacts": "0-1",
+    "companies": "0-2",
+    "deals": "0-3",
+    "tickets": "0-5",
+    "products": "0-7",
+    "line_items": "0-8",
+    "quotes": "0-14",
+    "communications": "0-18",
+    "feedback_submissions": "0-19",
+    "tasks": "0-27",
+    "notes": "0-46",
+    "meetings": "0-47",
+    "calls": "0-48",
+    "emails": "0-49",
+    "invoices": "0-53",
+    "marketing_events": "0-54",
+    "subscriptions": "0-69",
+    "goals": "0-74",
+    "leads": "0-136",
+    "orders": "0-123",
+    "customObjects": "2-{id} (retrieve via GET /crm/v3/schemas)"
+  },
+  "filterOperators": {
+    "ENUMERATION": {
+      "IS_ANY_OF": { "input": "values: [string]", "description": "Matches any listed value" },
+      "IS_NONE_OF": { "input": "values: [string]", "description": "Excludes listed values" },
+      "IS_EXACTLY": { "input": "values: [string]", "description": "Matches exact set (multi-select)" },
+      "IS_NOT_EXACTLY": { "input": "values: [string]", "description": "Does not match exact set" },
+      "CONTAINS_ALL": { "input": "values: [string]", "description": "Contains all listed values (multi-select)" },
+      "DOES_NOT_CONTAIN_ALL": { "input": "values: [string]", "description": "Missing at least one listed value" },
+      "HAS_EVER_BEEN_ANY_OF": { "input": "values: [string]", "description": "Property historically had any listed value" },
+      "HAS_NEVER_BEEN_ANY_OF": { "input": "values: [string]", "description": "Property never had any listed value" },
+      "HAS_PROPERTY": { "input": "none", "description": "Has any value set" },
+      "NOT_HAS_PROPERTY": { "input": "none", "description": "Is empty/not set" }
+    },
+    "STRING": {
+      "IS_EQUAL_TO": { "input": "value: string", "description": "Exact match" },
+      "IS_NOT_EQUAL_TO": { "input": "value: string", "description": "Not exact match" },
+      "HAS_EVER_BEEN_EQUAL_TO": { "input": "value: string", "description": "Property historically had this value" },
+      "HAS_NEVER_BEEN_EQUAL_TO": { "input": "value: string", "description": "Property never had this value" },
+      "HAS_PROPERTY": { "input": "none", "description": "Has any value" },
+      "NOT_HAS_PROPERTY": { "input": "none", "description": "Is empty" }
+    },
+    "MULTISTRING": {
+      "IS_EQUAL_TO": { "input": "values: [string]", "description": "Matches any listed value" },
+      "IS_NOT_EQUAL_TO": { "input": "values: [string]", "description": "Does not match any listed value" },
+      "CONTAINS": { "input": "values: [string]", "description": "Contains substring" },
+      "DOES_NOT_CONTAIN": { "input": "values: [string]", "description": "Does not contain substring" },
+      "STARTS_WITH": { "input": "values: [string]", "description": "Starts with value" },
+      "ENDS_WITH": { "input": "values: [string]", "description": "Ends with value" },
+      "note": "MULTISTRING is the standard operationType for most string properties in Lists v3. Use instead of STRING when matching substrings."
+    },
+    "NUMBER": {
+      "IS_EQUAL_TO": { "input": "value: number", "description": "Exact match" },
+      "IS_NOT_EQUAL_TO": { "input": "value: number", "description": "Not equal" },
+      "IS_BETWEEN": { "input": "value: number, highValue: number", "description": "Range inclusive" },
+      "IS_NOT_BETWEEN": { "input": "value: number, highValue: number", "description": "Outside range" },
+      "IS_GREATER_THAN": { "input": "value: number", "description": "Greater than" },
+      "IS_GREATER_THAN_OR_EQUAL_TO": { "input": "value: number", "description": "Greater than or equal" },
+      "IS_LESS_THAN": { "input": "value: number", "description": "Less than" },
+      "IS_LESS_THAN_OR_EQUAL_TO": { "input": "value: number", "description": "Less than or equal" },
+      "HAS_PROPERTY": { "input": "none", "description": "Has any value" },
+      "NOT_HAS_PROPERTY": { "input": "none", "description": "Is empty" }
+    },
+    "TIME_POINT": {
+      "IS_AFTER": { "input": "timePoint object", "description": "After a specific date/time" },
+      "IS_BEFORE": { "input": "timePoint object", "description": "Before a specific date/time" },
+      "note": "For precise date filtering. timePoint can be absolute (DATE), relative (INDEXED with offset), or property-referenced."
+    },
+    "TIME_RANGED": {
+      "IS_BETWEEN": { "input": "lowerBoundTimePoint, upperBoundTimePoint", "description": "Between two dates" },
+      "IS_NOT_BETWEEN": { "input": "lowerBoundTimePoint, upperBoundTimePoint", "description": "Outside date range" },
+      "note": "For rolling date windows. Use INDEXED timeType with offset for 'last N days' patterns."
+    },
+    "ALL_PROPERTY": {
+      "IS_KNOWN": { "input": "none", "description": "Property has any value" },
+      "IS_NOT_KNOWN": { "input": "none", "description": "Property has no value" }
+    },
+    "BOOL": {
+      "IS_EQUAL_TO": { "input": "value: boolean", "description": "Is true/false" },
+      "IS_NOT_EQUAL_TO": { "input": "value: boolean", "description": "Opposite" },
+      "HAS_EVER_BEEN_EQUAL_TO": { "input": "value: boolean", "description": "Property historically was true/false" },
+      "HAS_NEVER_BEEN_EQUAL_TO": { "input": "value: boolean", "description": "Property was never true/false" },
+      "HAS_PROPERTY": { "input": "none", "description": "Has been set" },
+      "NOT_HAS_PROPERTY": { "input": "none", "description": "Never set" }
+    }
+  },
+  "operationObjectFields": {
+    "operationType": "Required — one of the types above",
+    "operator": "Required — must be valid for the operationType",
+    "value": "Single value (NUMBER, BOOL, STRING)",
+    "values": "Array of values (ENUMERATION, MULTISTRING)",
+    "lowerBound": "Range lower bound (NUMBER IS_BETWEEN)",
+    "upperBound": "Range upper bound (NUMBER IS_BETWEEN)",
+    "highValue": "Alternative range upper bound",
+    "includeObjectsWithNoValueSet": "Boolean, default false — when true, records with no value are included",
+    "propertyParser": "VALUE (filter on value) or UPDATED_AT (filter on when property was last changed)"
+  },
+  "timePointObject": {
+    "timeType": "DATE (absolute), INDEXED (relative/rolling), or PROPERTY_REFERENCED",
+    "timezoneSource": "CUSTOM",
+    "zoneId": "e.g. US/Eastern, America/New_York",
+    "absoluteFields": "year, month, day, hour, minute, second, millisecond",
+    "indexedFields": {
+      "indexReference": { "referenceType": "TODAY or NOW" },
+      "offset": { "days": -15 }
+    },
+    "propertyReferencedFields": { "property": "some_date_property" }
+  },
+  "associationFilter": {
+    "filterBranchType": "ASSOCIATION",
+    "filterBranchOperator": "AND",
+    "requiredFields": ["objectTypeId", "operator", "associationTypeId", "associationCategory"],
+    "operatorValues": ["IN_LIST"],
+    "note": "Nested inside an AND branch. Filters within are PROPERTY filters on the associated object's properties."
+  },
+  "unifiedEventsFilter": {
+    "filterBranchType": "UNIFIED_EVENTS",
+    "filterBranchOperator": "AND",
+    "requiredFields": ["eventTypeId", "operator"],
+    "operatorValues": ["HAS_COMPLETED", "HAS_NOT_COMPLETED"],
+    "note": "Nested inside an AND branch. Filters within are PROPERTY filters on event properties."
+  },
+  "listLimits": {
+    "free": { "active": 5, "static": 5 },
+    "starter": { "active": 25, "static": 25 },
+    "professional": { "active": 1000, "static": 1000 },
+    "enterprise": { "active": 1500, "static": 1500 },
+    "maxFiltersPerList": 250,
+    "maxBulkMembershipAdd": 100000,
+    "deletedListRestorationWindow": "90 days"
+  },
+  "membershipEndpoints": {
+    "listMembers": "GET /crm/v3/lists/{listId}/memberships",
+    "addMembers": "PUT /crm/v3/lists/{listId}/memberships/add",
+    "removeMembers": "PUT /crm/v3/lists/{listId}/memberships/remove",
+    "removeAllMembers": "DELETE /crm/v3/lists/{listId}/memberships",
+    "addAndRemove": "PUT /crm/v3/lists/{listId}/memberships/add-and-remove",
+    "copyFromList": "PUT /crm/v3/lists/{listId}/memberships/add-from/{sourceListId}",
+    "restriction": "Membership endpoints only work on MANUAL or SNAPSHOT lists"
+  },
+  "v1SunsetDate": "2026-04-30",
+  "criticalWarnings": [
+    "Root filterBranch MUST be OR with empty filters array",
+    "Child branches MUST be AND — filterBranches can contain UNIFIED_EVENTS or ASSOCIATION branches",
+    "operationType MUST match the property's actual type — most common mistake",
+    "MULTISTRING is the correct operationType for most string properties (not STRING) when using CONTAINS/STARTS_WITH/ENDS_WITH",
+    "Manual lists do NOT have filterBranch",
+    "Dynamic lists REQUIRE filterBranch",
+    "SNAPSHOT lists use filterBranch at creation only — after processing, behave like MANUAL",
+    "List names must be globally unique across all public lists in the portal",
+    "Dynamic list membership cannot be modified via API — it is filter-driven",
+    "Pro tip: Create filters in HubSpot UI first, then GET /crm/v3/lists/{listId}?includeFilters=true to see exact JSON"
+  ]
+}

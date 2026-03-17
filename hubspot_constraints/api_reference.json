@@ -1,0 +1,114 @@
+{
+  "searchAPI": {
+    "endpoint": "POST /crm/v3/objects/{objectType}/search",
+    "limits": {
+      "maxFilterGroups": 5,
+      "maxFiltersPerGroup": 6,
+      "maxTotalFiltersAcrossGroups": 18,
+      "maxResultsPerPage": 200,
+      "defaultResultsPerPage": 10,
+      "maxTotalSearchable": 10000,
+      "maxQueryStringLength": 3000,
+      "consistency": "eventually consistent — newly created/updated records may take seconds to minutes to appear",
+      "workaround": "For immediate reads after writes, use batch/read or GET /crm/v3/objects/{type}/{id}"
+    },
+    "operators": ["EQ", "NEQ", "LT", "LTE", "GT", "GTE", "BETWEEN", "IN", "NOT_IN", "HAS_PROPERTY", "NOT_HAS_PROPERTY", "CONTAINS_TOKEN", "NOT_CONTAINS_TOKEN"],
+    "caseSensitivity": {
+      "general": "case-insensitive",
+      "enumeration": "CASE-SENSITIVE for all operators",
+      "IN_NOT_IN": "string values must be LOWERCASE"
+    },
+    "filterLogic": "Filters within a filterGroup are AND. Multiple filterGroups are OR.",
+    "sortable": true,
+    "sortLimit": "Only 1 sort field per query",
+    "paginationField": "after",
+    "paginationNote": "Cursor-based. Read paging.next.after from response. Absent = no more pages.",
+    "beyond10kRecords": "Segment queries using non-overlapping createdate or hs_object_id ranges"
+  },
+  "batchAPI": {
+    "create": "POST /crm/v3/objects/{objectType}/batch/create",
+    "update": "POST /crm/v3/objects/{objectType}/batch/update",
+    "upsert": "POST /crm/v3/objects/{objectType}/batch/upsert",
+    "read": "POST /crm/v3/objects/{objectType}/batch/read",
+    "archive": "POST /crm/v3/objects/{objectType}/batch/archive",
+    "maxItemsPerBatch": 100,
+    "upsertNote": "Uses idProperty (e.g., 'email' or custom unique property). Creates if not found, updates if found.",
+    "idempotency": "Include objectWriteTraceId per input for idempotent creates. Enables 207 multi-status responses.",
+    "multiStatus207": "Batch operations may return 207 with mixed success/failure per item"
+  },
+  "associationBatchAPI": {
+    "create": "POST /crm/v4/associations/{fromObjectType}/{toObjectType}/batch/create",
+    "read": "POST /crm/v4/associations/{fromObjectType}/{toObjectType}/batch/read",
+    "archive": "POST /crm/v4/associations/{fromObjectType}/{toObjectType}/batch/archive",
+    "removeLabels": "POST /crm/v4/associations/{fromObjectType}/{toObjectType}/batch/labels/archive",
+    "maxInputs": {
+      "create": 2000,
+      "read": 1000
+    }
+  },
+  "rateLimits": {
+    "byTier": {
+      "free_starter": { "burst": "100 requests / 10 seconds", "daily": "250,000 / account" },
+      "professional": { "burst": "190 requests / 10 seconds", "daily": "625,000 / account" },
+      "enterprise": { "burst": "190 requests / 10 seconds", "daily": "1,000,000 / account" },
+      "with_capacity_pack": { "burst": "250 requests / 10 seconds", "daily": "+1,000,000 / account (max 2 purchases)" },
+      "public_app_oauth": { "burst": "110 requests / 10 seconds per account" }
+    },
+    "search": "4 requests / second (stricter than general)",
+    "associations": {
+      "free_starter": "100 / 10 seconds",
+      "professional_enterprise": "150 / 10 seconds"
+    },
+    "batch": "100 items per request (CRM objects), 2000 for associations",
+    "retryHeader": "Retry-After (seconds for HTTP, milliseconds for workflow webhooks)"
+  },
+  "rateLimitHeaders": {
+    "X-HubSpot-RateLimit-Daily": "Daily allowance",
+    "X-HubSpot-RateLimit-Daily-Remaining": "Remaining daily requests",
+    "X-HubSpot-RateLimit-Max": "Max requests per interval window",
+    "X-HubSpot-RateLimit-Remaining": "Remaining in current window",
+    "X-HubSpot-RateLimit-Interval-Milliseconds": "Window duration"
+  },
+  "objectTypes": {
+    "contacts": { "id": "0-1", "apiPath": "contacts" },
+    "companies": { "id": "0-2", "apiPath": "companies" },
+    "deals": { "id": "0-3", "apiPath": "deals" },
+    "tickets": { "id": "0-5", "apiPath": "tickets" },
+    "products": { "id": "0-7", "apiPath": "products" },
+    "line_items": { "id": "0-8", "apiPath": "line_items" },
+    "quotes": { "id": "0-14", "apiPath": "quotes" },
+    "leads": { "apiPath": "leads" },
+    "calls": { "apiPath": "calls" },
+    "emails": { "apiPath": "emails" },
+    "meetings": { "apiPath": "meetings" },
+    "notes": { "apiPath": "notes" },
+    "tasks": { "apiPath": "tasks" }
+  },
+  "propertyValueFormats": {
+    "date": "UNIX epoch ms (midnight UTC) or YYYY-MM-DD",
+    "datetime": "UNIX epoch ms or ISO 8601 (2020-02-29T03:30:17.000Z)",
+    "boolean": "String 'true' or 'false'",
+    "number": "Numeric digits, at most one decimal",
+    "multiSelect": "Semicolon-separated, no spaces (VALUE1;VALUE2)",
+    "multiSelectAppend": "Prefix with semicolon to append (;NEWVALUE1;NEWVALUE2)",
+    "enumeration": "Internal value string (lowercase)",
+    "owner": "Numeric owner ID as string",
+    "clearValue": "Empty string ''"
+  },
+  "commonErrors": {
+    "200": "Success",
+    "207": "Multi-status — batch with mixed success/failure",
+    "400": "Bad request — invalid field, missing required, wrong format. Codes: VALIDATION_ERROR, PROPERTY_DOESNT_EXIST, INVALID_INTEGER, REQUIRED_PROPERTY",
+    "401": "Unauthorized — token expired or invalid",
+    "403": "Forbidden — missing scopes",
+    "404": "Not found — wrong ID or object type",
+    "409": "Conflict — duplicate unique property value",
+    "414": "URI too long — request too large or merge limit exceeded (250+)",
+    "423": "Locked — high-volume data sync in progress. Retry with 2-second delay",
+    "429": "Rate limited — honor Retry-After header. Check policyName for DAILY vs burst",
+    "477": "Migration — data center migration in progress. Uses Retry-After",
+    "502": "Gateway timeout — processing limits; pause and retry",
+    "503": "Unavailable — temporary outage",
+    "504": "Timeout — pause and retry"
+  }
+}

@@ -7,3 +7,13 @@ Dockerfile*
 README.md
 .env
 .env.*
+data/
+.claude/
+.agents/
+*.app/
+*.command
+logs/
+exports/
+generated-scripts/
+script-runs/
+.DS_Store

@@ -1,9 +1,8 @@
-import { getAnthropicClient } from "@/lib/anthropic";
 import { saveWorkflowSpecArtifact } from "@/lib/artifact-store";
 import { apiClient, hubSpotClient } from "@/lib/api-client";
 import { authManager } from "@/lib/auth-manager";
 import { changeLogger } from "@/lib/change-logger";
-import { canWriteInEnvironment, missingScopesFor, sanitizeSensitiveText } from "@/lib/safety-governance";
+import { canWriteInEnvironment, missingScopesFor } from "@/lib/safety-governance";
 
 export type WorkflowSpec = Record<string, unknown>;
 
@@ -32,7 +31,6 @@ export interface WorkflowSummary {
 }
 
 export interface WorkflowEngine {
-  generate(prompt: string): Promise<WorkflowSpec>;
   validate(spec: WorkflowSpec): ValidationResult;
   preview(spec: WorkflowSpec): string;
   deploy(spec: WorkflowSpec): Promise<DeployResult>;
@@ -42,46 +40,7 @@ export interface WorkflowEngine {
   delete(flowId: string, confirmationText: string): Promise<void>;
 }
 
-const WORKFLOW_PROMPT_SYSTEM = `You are a HubSpot workflow generator. Given a workflow description, output ONLY a valid JSON body for POST /automation/v4/flows.
-
-RULES:
-1. Set isEnabled: false (always deploy disabled)
-2. Use CONTACT_FLOW for contacts, PLATFORM_FLOW for everything else
-3. Chain actions with connection.nextActionId
-4. Use sequential actionIds starting from "1"
-5. Set nextAvailableActionId to (highest actionId + 1) as string
-6. Include flowType: "WORKFLOW"
-7. Include crmObjectCreationStatus: "COMPLETE"
-8. Include empty arrays for: timeWindows, blockedDates, suppressionListIds
-9. Set canEnrollFromSalesforce: false
-
-ACTION TYPE IDS:
-- Delay: actionTypeId "0-1", fields: { delta: "minutes", time_unit: "MINUTES" }
-- Send email: actionTypeId "0-4", fields: { content_id: "email_id" }
-- Set property: actionTypeId "0-5", fields: { property: "prop_name", newValue: "value" }
-- Create task: actionTypeId "0-7", fields: { subject: "...", body: "..." }
-- Send notification: actionTypeId "0-9", fields: { user_ids: [...], subject: "...", body: "...", delivery_method: "APP" }
-- Add to list: actionTypeId "0-13", fields: { list_id: "...", operation: "ADD" }
-- Create record: actionTypeId "0-14", fields: { object_type_id: "0-5", properties: [...] }
-
-ENROLLMENT TYPES:
-- Form submission: EVENT_BASED with eventTypeId "4-1639801"
-- Property change: PROPERTY_BASED with filter on the property
-- Manual: type "MANUAL"
-
-Output ONLY the JSON. No markdown, no explanation. Valid JSON only.`;
-
-function extractJson(text: string): WorkflowSpec {
-  const first = text.indexOf("{");
-  const last = text.lastIndexOf("}");
-  if (first < 0 || last <= first) {
-    throw new Error("Invalid workflow JSON output");
-  }
-
-  return JSON.parse(text.slice(first, last + 1)) as WorkflowSpec;
-}
-
-function normalizeWorkflowDefaults(spec: WorkflowSpec): WorkflowSpec {
+export function normalizeWorkflowDefaults(spec: WorkflowSpec): WorkflowSpec {
   return {
     ...spec,
     isEnabled: false,
@@ -92,12 +51,6 @@ function normalizeWorkflowDefaults(spec: WorkflowSpec): WorkflowSpec {
     suppressionListIds: Array.isArray(spec.suppressionListIds) ? spec.suppressionListIds : [],
     canEnrollFromSalesforce: false
   };
-}
-
-function determineModel(prompt: string): string {
-  const lower = prompt.toLowerCase();
-  const isComplex = /branch|if\s+then|else|multi-step|complex|advanced/.test(lower);
-  return isComplex ? "claude-opus-4-20250514" : "claude-sonnet-4-20250514";
 }
 
 class HubSpotWorkflowEngine implements WorkflowEngine {
@@ -122,33 +75,6 @@ class HubSpotWorkflowEngine implements WorkflowEngine {
     }
 
     return [];
-  }
-
-  async generate(prompt: string): Promise<WorkflowSpec> {
-    await authManager.ensureValidatedForSession();
-
-    const client = getAnthropicClient();
-    const model = determineModel(prompt);
-    const safePrompt = sanitizeSensitiveText(prompt);
-
-    const response = await client.messages.create({
-      model,
-      max_tokens: 3000,
-      temperature: 0,
-      system: [{ type: "text", text: WORKFLOW_PROMPT_SYSTEM }],
-      messages: [{ role: "user", content: safePrompt }]
-    });
-
-    const text = response.content
-      .filter((item) => item.type === "text")
-      .map((item) => (item.type === "text" ? item.text : ""))
-      .join("\n");
-
-    const spec = normalizeWorkflowDefaults(extractJson(text));
-    const portalId = authManager.getActivePortal().id;
-    const artifactName = String(spec.name || "workflow-spec");
-    await saveWorkflowSpecArtifact(portalId, artifactName, spec);
-    return spec;
   }
 
   validate(spec: WorkflowSpec): ValidationResult {
@@ -223,7 +149,7 @@ class HubSpotWorkflowEngine implements WorkflowEngine {
     });
 
     return [
-      "━━━ WORKFLOW SPEC ━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+      "--- WORKFLOW SPEC ---",
       `Name: ${name}`,
       `Type: ${type}`,
       `Status: ${status} (will be enabled after review)`,
@@ -233,7 +159,7 @@ class HubSpotWorkflowEngine implements WorkflowEngine {
       "ACTIONS:",
       ...(actionLines.length ? actionLines : ["  (none)"]),
       "",
-      "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+      "--------------------"
     ].join("\n");
   }
 
@@ -259,14 +185,18 @@ class HubSpotWorkflowEngine implements WorkflowEngine {
 
     const deployed = await this.get(flowId);
 
+    const portalId = authManager.getActivePortal().id;
+    const artifactName = String(safeSpec.name || "workflow-spec");
+    await saveWorkflowSpecArtifact(portalId, artifactName, safeSpec);
+
     await changeLogger.log({
-      portalId: authManager.getActivePortal().id,
+      portalId,
       layer: "api",
       module: "B2",
       action: "workflow_deploy",
       objectType: "workflow",
       recordId: flowId,
-      description: `Deployed workflow \"${String(safeSpec.name || "Unnamed")}\" (disabled)`,
+      description: `Deployed workflow "${String(safeSpec.name || "Unnamed")}" (disabled)`,
       after: safeSpec,
       status: "success",
       initiatedBy: "user"
@@ -316,7 +246,7 @@ class HubSpotWorkflowEngine implements WorkflowEngine {
       action: "workflow_deploy",
       objectType: "workflow",
       recordId: flowId,
-      description: `Updated workflow \"${String(safeSpec.name || "Unnamed")}\" (disabled)`,
+      description: `Updated workflow "${String(safeSpec.name || "Unnamed")}" (disabled)`,
       after: safeSpec,
       status: "success",
       initiatedBy: "user"

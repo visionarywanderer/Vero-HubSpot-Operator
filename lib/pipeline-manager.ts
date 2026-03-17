@@ -10,6 +10,9 @@ export interface Stage {
   label: string;
   displayOrder?: number;
   metadata?: Record<string, string>;
+  createdAt?: string;
+  updatedAt?: string;
+  archived?: boolean;
   [key: string]: unknown;
 }
 
@@ -19,6 +22,9 @@ export interface Pipeline {
   label: string;
   displayOrder?: number;
   stages: Stage[];
+  createdAt?: string;
+  updatedAt?: string;
+  archived?: boolean;
   [key: string]: unknown;
 }
 
@@ -49,6 +55,7 @@ export interface PipelineManager {
   listStages(objectType: PipelineObjectType, pipelineId: string): Promise<Stage[]>;
   addStage(objectType: PipelineObjectType, pipelineId: string, stage: StageSpec): Promise<Stage>;
   updateStage(objectType: PipelineObjectType, pipelineId: string, stageId: string, updates: Partial<StageSpec>): Promise<Stage>;
+  deleteStage(objectType: PipelineObjectType, pipelineId: string, stageId: string): Promise<void>;
   audit(objectType: PipelineObjectType): Promise<PipelineAudit[]>;
 }
 
@@ -223,6 +230,27 @@ class HubSpotPipelineManager implements PipelineManager {
       status: "success"
     });
     return stage;
+  }
+
+  async deleteStage(objectType: PipelineObjectType, pipelineId: string, stageId: string): Promise<void> {
+    try {
+      await hubSpotClient.delete(`/crm/v3/pipelines/${objectType}/${pipelineId}/stages/${stageId}`);
+      await logPipelineChange({
+        action: "delete",
+        recordId: `${pipelineId}:${stageId}`,
+        description: `Deleted stage ${stageId} from ${objectType} pipeline ${pipelineId}`,
+        status: "success"
+      });
+    } catch (error) {
+      await logPipelineChange({
+        action: "delete",
+        recordId: `${pipelineId}:${stageId}`,
+        description: `Failed to delete stage ${stageId} from ${objectType} pipeline ${pipelineId}`,
+        status: "error",
+        error: error instanceof Error ? error.message : "stage delete failed"
+      });
+      throw error;
+    }
   }
 
   async audit(objectType: PipelineObjectType): Promise<PipelineAudit[]> {

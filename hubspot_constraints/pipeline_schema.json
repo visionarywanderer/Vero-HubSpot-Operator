@@ -1,0 +1,76 @@
+{
+  "requiredPipelineFields": ["label", "displayOrder", "stages"],
+  "requiredStageFields": ["label", "displayOrder"],
+  "maxStages": {
+    "deals_tickets_custom": 100,
+    "appointments_courses_listings_leads_orders_services": 30
+  },
+  "pipelineLimitsByTier": {
+    "free": 1,
+    "starter": 2,
+    "professional": 15,
+    "enterprise": 100
+  },
+  "validObjectTypes": ["deals", "tickets", "appointments", "courses", "listings", "orders", "services", "leads"],
+  "stageMetadata": {
+    "dealPipeline": {
+      "probabilityRequired": true,
+      "probabilityFormat": "string, 0.1 increments: '0.0', '0.1', '0.2', ..., '1.0'",
+      "isClosedAutoSet": "HubSpot auto-sets isClosed=true when probability is 0.0 or 1.0",
+      "closedWonStage": {
+        "probability": "1.0",
+        "isClosed": "true (auto-set)",
+        "closedWon": "true",
+        "required": "strongly recommended for reporting/forecasting"
+      },
+      "closedLostStage": {
+        "probability": "0.0",
+        "isClosed": "true (auto-set)",
+        "closedWon": "false",
+        "required": "strongly recommended for reporting/forecasting"
+      }
+    },
+    "ticketPipeline": {
+      "ticketState": {
+        "values": ["OPEN", "CLOSED"],
+        "required": false,
+        "effects": [
+          "Close date auto-set when moving OPEN → CLOSED",
+          "Close date cleared when moving CLOSED → OPEN",
+          "Customer reply auto-reopens to first OPEN stage"
+        ]
+      }
+    }
+  },
+  "stageLabelUniqueness": "Stage labels must be unique within a pipeline",
+  "displayOrderTieBreaker": "Stages with same displayOrder sorted alphabetically by label",
+  "criticalWarnings": [
+    "ALL metadata values must be STRINGS — 'true' not true, '0.5' not 0.5",
+    "Deal stages REQUIRE probability metadata — omission causes 400 error",
+    "Probability must be in 0.1 increments (0.0, 0.1, 0.2, ..., 1.0)",
+    "PUT (replace) deletes stages not included in the body — use PATCH for partial updates",
+    "Pipeline cannot be deleted if records exist in its stages",
+    "No archive feature for pipelines — rename to 'UNUSED' as workaround"
+  ],
+  "probabilityGuidelines": {
+    "firstOpenStage": "0.1 - 0.2",
+    "midFunnel": "0.3 - 0.6",
+    "lateFunnel": "0.7 - 0.9",
+    "closedWon": "1.0",
+    "closedLost": "0.0"
+  },
+  "bestPractices": {
+    "recommendedStageCount": "5-8 for deals, 4-6 for tickets",
+    "maxRecommended": 10,
+    "eachStageShouldRepresent": "A meaningful milestone with clear entry/exit criteria"
+  },
+  "auditEndpoints": {
+    "pipeline": "GET /crm/v3/pipelines/{objectType}/{pipelineId}/audit",
+    "stage": "GET /crm/v3/pipelines/{objectType}/{pipelineId}/stages/{stageId}/audit"
+  },
+  "deleteEndpoint": {
+    "url": "DELETE /crm/v3/pipelines/{objectType}/{pipelineId}",
+    "safetyParam": "?validateReferencesBeforeDelete=true",
+    "errorSubCategory": "PipelineError.STAGE_ID_IN_USE"
+  }
+}

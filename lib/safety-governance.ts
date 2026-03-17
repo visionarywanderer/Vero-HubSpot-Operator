@@ -1,34 +1,37 @@
-type Layer = "mcp" | "api" | "script";
+type Layer = "api" | "script" | "template";
 
-const MCP_MODULE_SCOPE_MAP: Record<string, string[]> = {
-  A1: ["crm.objects.contacts.read", "crm.objects.companies.read", "crm.objects.deals.read", "tickets"],
-  A2: ["crm.objects.contacts.write", "crm.objects.companies.write", "crm.objects.deals.write", "tickets"],
-  A3: ["crm.objects.contacts.write", "crm.objects.companies.write", "crm.objects.deals.write", "tickets"],
-  A4: ["crm.objects.owners.read"],
+const MODULE_SCOPE_MAP: Record<string, string[]> = {
+  // CRM operations
+  A1: ["crm.objects.contacts.read", "crm.objects.companies.read", "crm.objects.deals.read"],
+  A2: ["crm.objects.contacts.write", "crm.objects.companies.write", "crm.objects.deals.write"],
+  A3: ["crm.objects.contacts.write", "crm.objects.companies.write", "crm.objects.deals.write"],
+  A4: ["crm.objects.users.read"],
   A5: ["crm.objects.contacts.write"],
   A6: ["crm.objects.contacts.write", "crm.objects.companies.write", "crm.objects.deals.write"],
-  A7: ["crm.objects.contacts.write", "crm.objects.companies.write", "crm.objects.deals.write", "tickets"]
-};
-
-const API_MODULE_SCOPE_MAP: Record<string, string[]> = {
+  A7: ["crm.objects.contacts.write", "crm.objects.companies.write", "crm.objects.deals.write"],
+  // Workflows
   "B1-B2": ["automation"],
+  B2: ["automation"],
   B3: ["automation"],
   B4: ["automation"],
   B5: ["automation"],
+  // Properties
   "C1/C5": ["crm.schemas.contacts.read", "crm.schemas.companies.read", "crm.schemas.deals.read"],
   C2: ["crm.schemas.contacts.write", "crm.schemas.companies.write", "crm.schemas.deals.write"],
-  "D1-D2": ["crm.lists.read", "crm.lists.write"],
-  "E1-E2": ["crm.objects.deals.read", "crm.objects.deals.write"]
+  // Lists
+  "D1-D2": ["lists.read", "lists.write"],
+  // Pipelines
+  "E1-E2": ["crm.objects.deals.read", "crm.objects.deals.write"],
+  // Scripts / Bulk
+  "F1-F6": []
 };
 
 export function isWriteModule(moduleCode: string): boolean {
-  return ["A2", "A3", "A4", "A5", "A6", "A7", "B1-B2", "B4", "B5", "C2", "D1-D2", "E1-E2", "F1-F6"].includes(moduleCode);
+  return ["A2", "A3", "A4", "A5", "A6", "A7", "B1-B2", "B2", "B4", "B5", "C2", "D1-D2", "E1-E2", "F1-F6"].includes(moduleCode);
 }
 
-export function requiredScopesFor(moduleCode: string, layer: Layer): string[] {
-  if (layer === "mcp") return MCP_MODULE_SCOPE_MAP[moduleCode] ?? [];
-  if (layer === "api") return API_MODULE_SCOPE_MAP[moduleCode] ?? [];
-  return [];
+export function requiredScopesFor(moduleCode: string, _layer: Layer): string[] {
+  return MODULE_SCOPE_MAP[moduleCode] ?? [];
 }
 
 export function missingScopesFor(moduleCode: string, layer: Layer, availableScopes: string[]): string[] {
@@ -51,28 +54,9 @@ export function canWriteInEnvironment(args: {
   return { allowed: true };
 }
 
-export function isDeleteOperation(moduleCode: string, prompt: string): boolean {
-  const lower = prompt.toLowerCase();
+export function isDeleteOperation(moduleCode: string, description: string): boolean {
+  const lower = description.toLowerCase();
   return moduleCode === "A7" || moduleCode === "B5" || /\b(delete|remove)\b/.test(lower);
-}
-
-export function extractExplicitId(prompt: string): string | null {
-  const keyMatch = prompt.match(/\b(?:flowId|workflowId|recordId|id)\s*[:=]\s*([a-zA-Z0-9_-]{3,})\b/i);
-  if (keyMatch) {
-    return keyMatch[1];
-  }
-
-  const quoted = prompt.match(/['"]([a-zA-Z0-9_-]{6,})['"]/);
-  if (quoted) {
-    return quoted[1];
-  }
-
-  const numeric = prompt.match(/\b(\d{6,})\b/);
-  if (numeric) {
-    return numeric[1];
-  }
-
-  return null;
 }
 
 export function sanitizeSensitiveText(input: string): string {

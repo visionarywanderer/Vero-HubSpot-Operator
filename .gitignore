@@ -10,9 +10,15 @@ yarn-debug.log*
 yarn-error.log*
 .vercel
 .DS_Store
+.mcp.json
 tsconfig.tsbuildinfo
 .data
+data/*.db
+data/*.db-shm
+data/*.db-wal
 logs
 exports
 generated-scripts
 script-runs
+.server.pid
+.server.log

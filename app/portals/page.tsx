@@ -1,16 +1,25 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState, useEffect } from "react";
 import { usePortal } from "@/hooks/usePortal";
 import { apiPost } from "@/lib/api";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { ConnectModal } from "@/components/portals/ConnectModal";
 import { DisconnectModal } from "@/components/portals/DisconnectModal";
+import { useSearchParams } from "next/navigation";
 
-export default function PortalsPage() {
+function PortalsContent() {
   const { portals, activePortal, setActivePortal, refresh } = usePortal();
   const [connectOpen, setConnectOpen] = useState(false);
   const [disconnectPortalId, setDisconnectPortalId] = useState<string | null>(null);
+  const searchParams = useSearchParams();
+
+  // Auto-refresh portal list when redirected back from OAuth callback
+  useEffect(() => {
+    if (searchParams.get("connected")) {
+      refresh();
+    }
+  }, [searchParams, refresh]);
 
   const disconnectPortal = useMemo(
     () => portals.find((portal) => portal.id === disconnectPortalId) || null,
@@ -57,10 +66,6 @@ export default function PortalsPage() {
       <ConnectModal
         open={connectOpen}
         onClose={() => setConnectOpen(false)}
-        onSubmit={async (input) => {
-          await apiPost("/api/portals", input);
-          await refresh();
-        }}
       />
 
       <DisconnectModal
@@ -76,5 +81,13 @@ export default function PortalsPage() {
 
       {activePortal ? <div className="page-subtitle">Active portal: {activePortal.name}</div> : null}
     </div>
+  );
+}
+
+export default function PortalsPage() {
+  return (
+    <Suspense>
+      <PortalsContent />
+    </Suspense>
   );
 }

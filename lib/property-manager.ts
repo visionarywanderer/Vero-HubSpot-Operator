@@ -5,7 +5,25 @@ export interface Property {
   label: string;
   type: string;
   fieldType: string;
+  groupName?: string;
+  description?: string;
+  displayOrder?: number;
+  hasUniqueValue?: boolean;
+  hidden?: boolean;
+  formField?: boolean;
+  calculated?: boolean;
+  externalOptions?: boolean;
   hubspotDefined?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+  archived?: boolean;
+  options?: Array<{ label: string; value: string; displayOrder?: number; hidden?: boolean }>;
+  modificationMetadata?: {
+    readOnlyDefinition?: boolean;
+    readOnlyOptions?: boolean;
+    readOnlyValue?: boolean;
+    archivable?: boolean;
+  };
   [key: string]: unknown;
 }
 
@@ -15,6 +33,11 @@ export interface PropertySpec {
   type: string;
   fieldType: string;
   groupName?: string;
+  description?: string;
+  displayOrder?: number;
+  hasUniqueValue?: boolean;
+  hidden?: boolean;
+  formField?: boolean;
   options?: Array<{ label: string; value: string; displayOrder?: number }>;
   [key: string]: unknown;
 }
@@ -28,11 +51,20 @@ export interface PropertyAudit {
   recommendation: "DELETE_CANDIDATE" | "REVIEW" | "OK";
 }
 
+export interface PropertyGroup {
+  name: string;
+  label: string;
+  displayOrder?: number;
+  archived?: boolean;
+}
+
 export interface PropertyManager {
   list(objectType: string): Promise<Property[]>;
   create(objectType: string, spec: PropertySpec): Promise<Property>;
   update(objectType: string, name: string, updates: Partial<PropertySpec>): Promise<Property>;
   delete(objectType: string, name: string): Promise<void>;
+  listGroups(objectType: string): Promise<PropertyGroup[]>;
+  createGroup(objectType: string, spec: { name: string; label: string; displayOrder?: number }): Promise<PropertyGroup>;
   audit(objectType: string): Promise<PropertyAudit[]>;
 }
 
@@ -88,6 +120,17 @@ class HubSpotPropertyManager implements PropertyManager {
 
   async delete(objectType: string, name: string): Promise<void> {
     await apiClient.properties.delete(objectType, name);
+  }
+
+  async listGroups(objectType: string): Promise<PropertyGroup[]> {
+    const response = await hubSpotClient.get(`/crm/v3/properties/${objectType}/groups`);
+    const data = response.data as { results?: PropertyGroup[] };
+    return data.results ?? [];
+  }
+
+  async createGroup(objectType: string, spec: { name: string; label: string; displayOrder?: number }): Promise<PropertyGroup> {
+    const response = await hubSpotClient.post(`/crm/v3/properties/${objectType}/groups`, spec);
+    return response.data as PropertyGroup;
   }
 
   async audit(objectType: string): Promise<PropertyAudit[]> {

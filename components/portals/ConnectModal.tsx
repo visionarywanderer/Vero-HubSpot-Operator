@@ -5,25 +5,34 @@ import { apiGet } from "@/lib/api";
 
 export function ConnectModal({
   open,
-  onClose,
-  onSubmit
+  onClose
 }: {
   open: boolean;
   onClose: () => void;
-  onSubmit: (input: { id: string; name: string; token: string; environment: "sandbox" | "production" }) => Promise<void>;
+  /** @deprecated Token-based onSubmit is no longer used — OAuth is the only flow */
+  onSubmit?: (input: { id: string; name: string; token: string; environment: "sandbox" | "production" }) => Promise<void>;
 }) {
-  const [id, setId] = useState("");
-  const [name, setName] = useState("");
-  const [token, setToken] = useState("");
-  const [environment, setEnvironment] = useState<"sandbox" | "production">("sandbox");
   const [oauthUrl, setOauthUrl] = useState("");
-  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     if (!open) return;
-    apiGet<{ ok: boolean; url?: string }>("/api/portals/connect")
-      .then((data) => setOauthUrl(data.url || ""))
-      .catch(() => setOauthUrl(""));
+    setError("");
+    setLoading(true);
+    apiGet<{ ok: boolean; url?: string; error?: string }>("/api/portals/connect")
+      .then((data) => {
+        if (data.url) {
+          setOauthUrl(data.url);
+        } else {
+          setError(data.error || "Failed to generate OAuth URL");
+        }
+      })
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : "Failed to fetch OAuth URL");
+        setOauthUrl("");
+      })
+      .finally(() => setLoading(false));
   }, [open]);
 
   if (!open) return null;
@@ -31,45 +40,37 @@ export function ConnectModal({
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-        <h3>Connect a New Client Portal</h3>
-        <div className="stack">
-          <input className="input" placeholder="Portal ID" value={id} onChange={(e) => setId(e.target.value)} />
-          <input className="input" placeholder="Client Name" value={name} onChange={(e) => setName(e.target.value)} />
-          <input className="input" placeholder="HubSpot private app token (optional fallback)" value={token} onChange={(e) => setToken(e.target.value)} />
-          <div style={{ display: "flex", gap: 8 }}>
-            <label><input type="radio" checked={environment === "sandbox"} onChange={() => setEnvironment("sandbox")} /> Sandbox</label>
-            <label><input type="radio" checked={environment === "production"} onChange={() => setEnvironment("production")} /> Production</label>
-          </div>
-        </div>
+        <h3>Connect a HubSpot Portal</h3>
 
-        {oauthUrl ? (
-          <div className="card" style={{ marginTop: 10 }}>
-            <div className="page-subtitle">OAuth link</div>
-            <code style={{ fontSize: 12, wordBreak: "break-all" }}>{oauthUrl}</code>
-            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-              <a className="btn btn-ghost" href={oauthUrl} target="_blank" rel="noreferrer">Open HubSpot Authorization</a>
-              <button className="btn btn-ghost" onClick={() => navigator.clipboard.writeText(oauthUrl).catch(() => undefined)}>Copy</button>
-            </div>
+        <p style={{ fontSize: 14, color: "#6b7280", marginBottom: 16 }}>
+          Click the button below to authorize access via OAuth. HubSpot will ask you to grant
+          permissions — only those available on your portal tier will be activated.
+        </p>
+
+        {loading ? (
+          <div style={{ textAlign: "center", padding: 20 }}>Loading...</div>
+        ) : error ? (
+          <div className="card" style={{ borderColor: "#f2545b", color: "#8a1f26" }}>
+            {error}
+          </div>
+        ) : oauthUrl ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <a
+              className="btn btn-primary"
+              href={oauthUrl}
+              style={{ textAlign: "center", textDecoration: "none" }}
+            >
+              Connect with HubSpot
+            </a>
+            <p style={{ fontSize: 12, color: "#9ca3af", textAlign: "center" }}>
+              You&apos;ll be redirected to HubSpot to authorize access. Scopes will adapt
+              dynamically to your portal&apos;s subscription tier.
+            </p>
           </div>
         ) : null}
 
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12 }}>
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
           <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button
-            className="btn btn-primary"
-            disabled={saving || !id || !name || !token}
-            onClick={async () => {
-              setSaving(true);
-              try {
-                await onSubmit({ id, name, token, environment });
-                onClose();
-              } finally {
-                setSaving(false);
-              }
-            }}
-          >
-            {saving ? "Connecting..." : "Connect with Token Fallback"}
-          </button>
         </div>
       </div>
     </div>

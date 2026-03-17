@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { usePortal } from "@/hooks/usePortal";
-import { apiGet, apiPost } from "@/lib/api";
+import { apiGet } from "@/lib/api";
+import Link from "next/link";
 
 type StatsResponse = {
   ok: true;
@@ -23,16 +24,21 @@ type LogEntry = {
 };
 
 export default function DashboardPage() {
-  const { activePortal, loading } = usePortal();
+  const { activePortal, portals, loading } = usePortal();
   const [stats, setStats] = useState<StatsResponse["stats"] | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [statsError, setStatsError] = useState("");
 
   useEffect(() => {
     if (!activePortal?.hubId) return;
+    setStatsError("");
 
     apiGet<StatsResponse>(`/api/stats/${activePortal.hubId}`)
       .then((resp) => setStats(resp.stats))
-      .catch(() => setStats(null));
+      .catch((err) => {
+        setStats(null);
+        setStatsError(err instanceof Error ? err.message : "Failed to load stats. Check portal scopes.");
+      });
 
     apiGet<{ ok: true; logs: LogEntry[] }>(`/api/activity?portalId=${encodeURIComponent(activePortal.id)}`)
       .then((resp) => setLogs(resp.logs.slice(0, 10)))
@@ -45,8 +51,8 @@ export default function DashboardPage() {
     return (
       <div className="empty-state">
         <h1 className="page-title">No Portals Connected</h1>
-        <p className="page-subtitle">Connect your first portal to start operations.</p>
-        <a className="btn btn-primary" href="/portals">Connect Your First Portal</a>
+        <p className="page-subtitle">Connect your first HubSpot portal to start managing configurations.</p>
+        <Link className="btn btn-primary" href="/portals">Connect Your First Portal</Link>
       </div>
     );
   }
@@ -55,38 +61,74 @@ export default function DashboardPage() {
     <div className="stack">
       <div>
         <h1 className="page-title">Dashboard</h1>
-        <p className="page-subtitle">At-a-glance status for {activePortal.name}</p>
+        <p className="page-subtitle">
+          {activePortal.name} &middot; {activePortal.environment} &middot; Hub {activePortal.hubId}
+        </p>
         <div className="accent-stripe" />
       </div>
 
+      {/* Stats Error */}
+      {statsError && (
+        <div className="card" style={{ borderLeft: "3px solid var(--danger)", color: "var(--danger)", fontSize: 13 }}>
+          {statsError}
+        </div>
+      )}
+
+      {/* Portal Stats */}
       <div className="card-grid">
-        <div className="card"><h3>Contacts</h3><div>{stats?.contacts ?? "-"}</div></div>
-        <div className="card"><h3>Companies</h3><div>{stats?.companies ?? "-"}</div></div>
-        <div className="card"><h3>Open Deals</h3><div>{stats?.openDeals ?? "-"}</div><small>${stats?.openDealValue ?? 0}</small></div>
-        <div className="card"><h3>Today&apos;s Changes</h3><div>{stats?.changesToday ?? "-"}</div></div>
+        <div className="card"><h3>Contacts</h3><div style={{ fontSize: 24, fontWeight: 600 }}>{stats?.contacts ?? "—"}</div></div>
+        <div className="card"><h3>Companies</h3><div style={{ fontSize: 24, fontWeight: 600 }}>{stats?.companies ?? "—"}</div></div>
+        <div className="card">
+          <h3>Open Deals</h3>
+          <div style={{ fontSize: 24, fontWeight: 600 }}>{stats?.openDeals ?? "—"}</div>
+          {stats?.openDealValue ? <div style={{ fontSize: 12, color: "var(--muted)" }}>${stats.openDealValue.toLocaleString()}</div> : null}
+        </div>
+        <div className="card"><h3>Changes Today</h3><div style={{ fontSize: 24, fontWeight: 600 }}>{stats?.changesToday ?? "—"}</div></div>
       </div>
 
       <div className="card-grid two">
-        <div className="card">
-          <h3>Recent Activity</h3>
-          <table className="table">
-            <thead><tr><th>Action</th><th>Description</th><th>Time</th></tr></thead>
-            <tbody>
-              {logs.map((entry) => (
-                <tr key={entry.id}>
-                  <td>{entry.action}</td>
-                  <td>{entry.description}</td>
-                  <td>{new Date(entry.timestamp).toLocaleString()}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        {/* Recent Activity */}
         <div className="card stack">
-          <h3>Quick Actions</h3>
-          <button className="btn btn-primary" onClick={() => apiPost("/api/prompts/execute", { id: "audit-data-quality", portalId: activePortal.id }).catch(() => undefined)}>Run Data Quality Audit</button>
-          <button className="btn btn-primary" onClick={() => apiPost("/api/prompts/execute", { id: "audit-pipeline-health", portalId: activePortal.id }).catch(() => undefined)}>Check Pipeline Health</button>
-          <a href="/chat" className="btn btn-ghost">View All Prompts</a>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <h3 style={{ margin: 0 }}>Recent Activity</h3>
+            <Link href="/activity" className="btn btn-ghost" style={{ fontSize: 12 }}>View All</Link>
+          </div>
+          {logs.length === 0 ? (
+            <p className="page-subtitle">No recent activity.</p>
+          ) : (
+            <table className="table">
+              <thead><tr><th>Action</th><th>Description</th><th>Time</th></tr></thead>
+              <tbody>
+                {logs.map((entry) => (
+                  <tr key={entry.id}>
+                    <td style={{ fontSize: 12 }}>{entry.action}</td>
+                    <td style={{ fontSize: 12 }}>{entry.description}</td>
+                    <td style={{ fontSize: 11, color: "var(--muted)", whiteSpace: "nowrap" }}>{new Date(entry.timestamp).toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {/* Quick Navigation */}
+        <div className="card stack">
+          <h3>Quick Navigation</h3>
+          <div className="stack" style={{ gap: 6 }}>
+            <Link href="/how-it-works" className="btn btn-primary" style={{ textAlign: "left" }}>How It Works — Start Here</Link>
+            <Link href="/templates" className="btn btn-primary" style={{ textAlign: "left" }}>Install Templates</Link>
+            <Link href="/prompt-packs" className="btn btn-primary" style={{ textAlign: "left" }}>Prompt Packs for Claude</Link>
+            <Link href="/clone" className="btn btn-ghost" style={{ textAlign: "left" }}>Clone Portal Configuration</Link>
+            <Link href="/diff" className="btn btn-ghost" style={{ textAlign: "left" }}>Compare Portal Configs</Link>
+            <Link href="/environments" className="btn btn-ghost" style={{ textAlign: "left" }}>Manage Environments</Link>
+          </div>
+
+          {/* Portal Info */}
+          <div style={{ marginTop: 8, fontSize: 12, color: "var(--muted)" }}>
+            <div><strong>Scopes:</strong> {activePortal.scopes.length} granted</div>
+            <div><strong>Connected portals:</strong> {portals.length}</div>
+            <div><strong>Last validated:</strong> {activePortal.lastValidated ? new Date(activePortal.lastValidated).toLocaleDateString() : "—"}</div>
+          </div>
         </div>
       </div>
     </div>

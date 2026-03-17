@@ -3,11 +3,41 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { apiGet } from "@/lib/api";
 
+export type PortalCapabilities = {
+  contacts: boolean;
+  companies: boolean;
+  deals: boolean;
+  tickets: boolean;
+  lineItems: boolean;
+  quotes: boolean;
+  orders: boolean;
+  calls: boolean;
+  notes: boolean;
+  tasks: boolean;
+  emails: boolean;
+  meetings: boolean;
+  properties: boolean;
+  pipelines: boolean;
+  users: boolean;
+  ecommerce: boolean;
+  workflows: boolean;
+  forms: boolean;
+  files: boolean;
+  timeline: boolean;
+  customObjects: boolean;
+  lists: boolean;
+  cms: boolean;
+  conversations: boolean;
+  importExport: boolean;
+  sensitiveData: boolean;
+};
+
 export type Portal = {
   id: string;
   name: string;
   hubId: string;
   scopes: string[];
+  capabilities: PortalCapabilities;
   environment: "production" | "sandbox";
   createdAt: string;
   lastValidated: string;

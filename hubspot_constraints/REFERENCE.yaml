@@ -1,0 +1,462 @@
+# ============================================================
+# HubSpot Config Engine — Complete API Reference
+# ============================================================
+# This file is the single source of truth for all HubSpot API
+# constraints, formats, and validation rules used by the
+# Vero HubSpot Config Engine.
+#
+# Skills in .claude/skills/ reference this data.
+# Constraint JSON files in this directory are the machine-readable
+# versions used by the app's validation logic.
+# ============================================================
+
+# ─────────────────────────────────────────────────────────────
+# WORKFLOWS (Automation v4 API — BETA)
+# ─────────────────────────────────────────────────────────────
+workflows:
+  endpoint: POST /automation/v4/flows
+  status: BETA
+  required_tier: Professional or higher
+
+  required_fields:
+    - name               # string, max 256 chars
+    - type               # CONTACT_FLOW or PLATFORM_FLOW
+    - objectTypeId       # "0-1", "0-2", "0-3", "0-5", etc.
+    - isEnabled          # MUST be false
+    - startActionId      # string, must reference existing action
+    - nextAvailableActionId  # integer, max(actionId) + 1
+    - enrollmentCriteria # object
+    - actions            # array, min 1
+
+  flow_types:
+    "0-1": CONTACT_FLOW    # Contacts only
+    "0-2": PLATFORM_FLOW   # Companies
+    "0-3": PLATFORM_FLOW   # Deals
+    "0-5": PLATFORM_FLOW   # Tickets
+    "0-47": PLATFORM_FLOW  # Meetings
+    "0-48": PLATFORM_FLOW  # Calls
+    "0-53": PLATFORM_FLOW  # Invoices
+    "2-XXXXX": PLATFORM_FLOW  # Custom objects
+    # RULE: Only 0-1 uses CONTACT_FLOW. Everything else = PLATFORM_FLOW.
+
+  action_type_ids:
+    "0-1":
+      name: Delay
+      required_fields: { delta: "string (minutes)", time_unit: "MINUTES|HOURS|DAYS|WEEKS" }
+    "0-3":
+      name: Create task
+      required_fields: { subject: "string" }
+      optional_fields: [body, priority, ownerIds]
+      priority_values: [LOW, MEDIUM, HIGH]
+    "0-4":
+      name: Send email
+      required_fields: { content_id: "email template ID" }
+    "0-5":
+      name: Set property
+      fields_format: "Object with property name as key, value type as value"
+      example: '{ "hs_lead_status": { "type": "STATIC_VALUE", "staticValue": "NEW" } }'
+    "0-8":
+      name: Send internal email
+      required_fields: [user_ids, subject, body]
+    "0-9":
+      name: Send in-app notification
+      required_fields: [user_ids, subject, body]
+    "0-11":
+      name: Rotate record to owner
+    "0-14":
+      name: Create record
+      required_fields: [object_type_id, properties, associations]
+    "0-15":
+      name: Go to workflow
+    "0-35":
+      name: Delay until date/date property
+    "0-63809083":
+      name: Add to static list
+      required_fields: { list_id: "string" }
+      note: Replaces deprecated 0-13
+    "0-63863438":
+      name: Remove from static list
+      required_fields: { list_id: "string" }
+
+  deprecated_ids:
+    "0-7": "Was documented as Create task — use 0-3 instead"
+    "0-13": "Alter list membership — use 0-63809083 (add) and 0-63863438 (remove)"
+
+  deprecated_action_names:
+    - SET_CONTACT_PROPERTY  # → use "0-5"
+    - CREATE_TASK           # → use "0-3"
+    - SEND_EMAIL            # → use "0-4"
+    - DELAY                 # → use "0-1"
+    - SEND_INTERNAL_EMAIL   # → use "0-8"
+    - ADD_TO_LIST           # → use "0-63809083"
+    - REMOVE_FROM_LIST      # → use "0-63863438"
+
+  action_structure_types:
+    SINGLE_CONNECTION: "Standard actions with actionTypeId, fields, connection"
+    LIST_BRANCH: "If/then branching — NO actionTypeId. Uses listBranches with filterBranch."
+    STATIC_BRANCH: "Value-based branching — NO actionTypeId. Uses inputValue + staticBranches."
+    AB_TEST_BRANCH: "A/B split — NO actionTypeId. Uses testBranches with percentage."
+    CUSTOM_CODE: "Custom code. Runtime: NODE16X or PYTHON3_9. 20s timeout."
+    WEBHOOK: "Webhook action. Supports GET/POST/PUT/PATCH/DELETE."
+
+  input_value_types:
+    STATIC_VALUE: '{ "type": "STATIC_VALUE", "staticValue": "string" }'
+    OBJECT_PROPERTY: '{ "type": "OBJECT_PROPERTY", "propertyName": "string" }'
+    FIELD_DATA: '{ "type": "FIELD_DATA", "actionId": "string", "dataKey": "string" }'
+    ENROLLED_OBJECT: '{ "type": "ENROLLED_OBJECT" }'
+    INCREMENT: '{ "type": "INCREMENT", "incrementAmount": number }'
+
+  enrollment_types:
+    EVENT_BASED:
+      description: Triggers on property change, form submission, page visit
+      event_type_ids:
+        "0-1": Object created / property changed
+        "4-1639801": Form submission
+        "4-96000": Page visited
+        "4-666440": Email opened
+    LIST_BASED:
+      description: Triggers when record meets list filter criteria
+      extra_fields: [listFilterBranch, unEnrollObjectsNotMeetingCriteria, reEnrollmentTriggersFilterBranches]
+    MANUAL:
+      description: No automatic enrollment
+
+  workflow_limits:
+    professional: 300
+    enterprise: 1000
+    max_actions: 500
+    max_if_then_branches: 20
+    max_static_branches: 250
+
+  common_errors:
+    - error: "required fields: [type]"
+      cause: Missing type and/or actionTypeVersion on actions
+      fix: Add type=SINGLE_CONNECTION and actionTypeVersion=0 to EVERY SINGLE_CONNECTION action
+    - error: "Invalid input JSON"
+      cause: Malformed JSON or wrong field format
+      fix: Validate JSON; ensure fields format matches action structure type
+    - error: "startActionId not found"
+      cause: startActionId doesn't match any action
+      fix: Ensure startActionId references existing action's actionId
+
+  pro_tip: >
+    Create the workflow manually in HubSpot UI first, then
+    GET /automation/v4/flows/{flowId} to see the exact JSON structure.
+
+# ─────────────────────────────────────────────────────────────
+# PROPERTIES (CRM v3 API)
+# ─────────────────────────────────────────────────────────────
+properties:
+  create_endpoint: POST /crm/v3/properties/{objectType}
+  batch_create: POST /crm/v3/properties/{objectType}/batch/create
+
+  required_fields:
+    - name         # lowercase snake_case, ^[a-z][a-z0-9_]*$, max 64
+    - label        # max 128 chars
+    - type         # see type_fieldtype_matrix
+    - fieldType    # must match type
+    - groupName    # must exist in portal
+
+  type_fieldtype_matrix:
+    string: [text, textarea, phonenumber, file, html, calculation_equation]
+    number: [number, calculation_equation]
+    datetime: [date]
+    date: [date]
+    bool: [booleancheckbox, calculation_equation]
+    enumeration: [select, radio, checkbox, booleancheckbox, calculation_equation]
+    object_coordinates: [text]  # READ-ONLY
+    json: [text]                # READ-ONLY
+
+  name_constraints:
+    pattern: "^[a-z][a-z0-9_]*$"
+    max_length: 64
+    reserved_names: [id, createdate, lastmodifieddate, hs_object_id]
+    reserved_prefixes: [hs_, hubspot_]
+
+  immutable_after_creation: [name, type]
+
+  option_constraints:
+    required_for: enumeration
+    required_fields: [label, value, displayOrder]
+    value_pattern: "^[a-z0-9_]+$"  # lowercase, no spaces
+    max_options: 500
+
+  limits:
+    max_unique_value_properties: 10  # per object type
+    max_label_length: 128
+    max_name_length: 64
+    max_string_value_length: 65536
+    custom_property_limits:
+      free: 10
+      starter: 1000
+      professional: 1000
+      enterprise: 1000
+
+  value_formats:
+    string: "plain string"
+    number: "numeric string (e.g., '42.5')"
+    datetime: "epoch milliseconds string"
+    date: "YYYY-MM-DD"
+    bool: "'true' or 'false'"
+    enumeration_single: "single value string"
+    enumeration_multi: "semicolon-separated (e.g., 'a;b;c')"
+
+  valid_object_types:
+    - contacts
+    - companies
+    - deals
+    - tickets
+    - line_items
+    - products
+    - quotes
+    - calls
+    - emails
+    - meetings
+    - notes
+    - tasks
+
+  common_groups:
+    contacts: [contactinformation, sales_properties, conversion_information]
+    companies: [companyinformation]
+    deals: [dealinformation]
+    tickets: [ticketinformation]
+
+# ─────────────────────────────────────────────────────────────
+# PIPELINES (CRM v3 API)
+# ─────────────────────────────────────────────────────────────
+pipelines:
+  endpoint: POST /crm/v3/pipelines/{objectType}
+
+  valid_object_types: [deals, tickets]
+
+  required_fields:
+    pipeline: [label, stages]
+    stage: [label, displayOrder]
+
+  limits:
+    max_stages: 100
+    pipelines_by_tier:
+      free: 1
+      starter: 2
+      professional: 15
+      enterprise: 100
+    recommended_stages: "5-8 for deals, 4-6 for tickets"
+
+  deal_pipeline_rules:
+    - Must have Closed Won stage (closedWon="true", probability="1.0")
+    - Must have Closed Lost stage (closedWon="false", probability="0.0")
+    - ALL metadata values must be STRINGS ("true" not true)
+    - probability REQUIRED on ALL deal stages (0.1 increments)
+    - isClosed auto-set by HubSpot when probability is 0.0 or 1.0
+
+  metadata_keys:
+    isClosed: { type: string, values: ["true", "false"] }
+    closedWon: { type: string, values: ["true", "false"], requires: "isClosed=true" }
+    probability: { type: string, range: "0.0 to 1.0", increments: "0.1" }
+
+  ticket_pipelines:
+    ticketState: { values: ["OPEN", "CLOSED"], effect: "Auto-sets close date on transition" }
+
+# ─────────────────────────────────────────────────────────────
+# LISTS (CRM v3 API)
+# ─────────────────────────────────────────────────────────────
+lists:
+  endpoint: POST /crm/v3/lists/
+  v1_sunset: "2026-04-30"
+
+  required_fields: [name, objectTypeId, processingType]
+  processing_types: [DYNAMIC, MANUAL, SNAPSHOT]
+  name_uniqueness: "Must be globally unique across all public lists"
+
+  filter_branch_structure:
+    root:
+      filterBranchType: OR
+      filterBranchOperator: OR
+      filters: "[] (always empty)"
+      filterBranches: "array of AND child branches"
+    child:
+      filterBranchType: AND
+      filterBranchOperator: AND
+      filters: "array of filter conditions"
+      filterBranches: "[] or UNIFIED_EVENTS/ASSOCIATION branches"
+    valid_branch_types: [OR, AND, UNIFIED_EVENTS, ASSOCIATION, NOT_ALL, NOT_ANY]
+
+  operation_types:
+    ENUMERATION:
+      operators: [IS_ANY_OF, IS_NONE_OF, IS_EXACTLY, CONTAINS_ALL, HAS_EVER_BEEN_ANY_OF, HAS_NEVER_BEEN_ANY_OF, HAS_PROPERTY, NOT_HAS_PROPERTY]
+      input_field: values  # array of strings
+    MULTISTRING:
+      operators: [IS_EQUAL_TO, IS_NOT_EQUAL_TO, CONTAINS, DOES_NOT_CONTAIN, STARTS_WITH, ENDS_WITH]
+      input_field: values  # array of strings
+      note: "Correct type for most string properties when using substring matching"
+    STRING:
+      operators: [IS_EQUAL_TO, IS_NOT_EQUAL_TO, HAS_EVER_BEEN_EQUAL_TO, HAS_NEVER_BEEN_EQUAL_TO, HAS_PROPERTY, NOT_HAS_PROPERTY]
+      input_field: value  # single string
+    NUMBER:
+      operators: [IS_EQUAL_TO, IS_NOT_EQUAL_TO, IS_BETWEEN, IS_NOT_BETWEEN, IS_GREATER_THAN, IS_GREATER_THAN_OR_EQUAL_TO, IS_LESS_THAN, IS_LESS_THAN_OR_EQUAL_TO, HAS_PROPERTY, NOT_HAS_PROPERTY]
+      input_field: value (or value + highValue for BETWEEN)
+    TIME_POINT:
+      operators: [IS_AFTER, IS_BEFORE]
+      input_field: timePoint object
+      note: "For precise date filtering. timeType: DATE, INDEXED, or PROPERTY_REFERENCED"
+    TIME_RANGED:
+      operators: [IS_BETWEEN, IS_NOT_BETWEEN]
+      input_field: lowerBoundTimePoint + upperBoundTimePoint
+      note: "For rolling date windows. Use INDEXED with offset for 'last N days'"
+    BOOL:
+      operators: [IS_EQUAL_TO, IS_NOT_EQUAL_TO, HAS_EVER_BEEN_EQUAL_TO, HAS_PROPERTY, NOT_HAS_PROPERTY]
+      input_field: value  # boolean
+    ALL_PROPERTY:
+      operators: [IS_KNOWN, IS_NOT_KNOWN]
+
+  object_type_ids:
+    contacts: "0-1"
+    companies: "0-2"
+    deals: "0-3"
+    tickets: "0-5"
+    products: "0-7"
+    line_items: "0-8"
+    quotes: "0-14"
+    leads: "0-136"
+    orders: "0-123"
+    custom_objects: "2-XXXXX"
+
+  limits_by_tier:
+    free: 5
+    starter: 25
+    professional: 1000
+    enterprise: 1500
+  max_filters_per_list: 250
+
+  critical_warnings:
+    - "MULTISTRING is correct for substring matching (CONTAINS/STARTS_WITH/ENDS_WITH), not STRING"
+    - "operationType MUST match the property's actual HubSpot type"
+    - "Dynamic list membership CANNOT be modified via API"
+    - "List names must be globally unique across all public lists"
+
+# ─────────────────────────────────────────────────────────────
+# CUSTOM OBJECTS
+# ─────────────────────────────────────────────────────────────
+custom_objects:
+  endpoint: POST /crm/v3/schemas
+  required_tier: Enterprise
+  max_per_portal: 10
+
+  required_fields:
+    - name                    # ^[a-zA-Z][a-zA-Z0-9_]*$, max 64
+    - labels.singular
+    - labels.plural
+    - primaryDisplayProperty  # must reference a string property in properties array
+    - properties              # array of property definitions
+
+  immutable_after_creation: [name, labels]
+  primary_display_can_change: true
+
+  limits:
+    max_searchable_properties: 20
+    max_properties_per_object: 1000
+
+  property_rules: "Same as standard properties (see properties section)"
+
+  schema_modification:
+    can_change_via_patch: [requiredProperties, searchableProperties, primaryDisplayProperty, secondaryDisplayProperties]
+    cannot_change: [name, labels]
+
+# ─────────────────────────────────────────────────────────────
+# ASSOCIATIONS
+# ─────────────────────────────────────────────────────────────
+associations:
+  endpoint: POST /crm/v4/associations/{from}/{to}/batch/create
+  batch_limit:
+    create: 2000
+    read: 1000
+
+  required_fields: [fromObjectType, toObjectType]
+  categories: [HUBSPOT_DEFINED, USER_DEFINED, INTEGRATOR_DEFINED]
+
+  standard_pairs:
+    - [contacts, companies]
+    - [contacts, deals]
+    - [contacts, tickets]
+    - [companies, deals]
+    - [companies, tickets]
+    - [deals, line_items]
+    - [deals, quotes]
+
+  notes:
+    - Associations are bidirectional (A→B also creates B→A)
+    - Labeled associations require Enterprise tier
+
+# ─────────────────────────────────────────────────────────────
+# BULK SCRIPTS
+# ─────────────────────────────────────────────────────────────
+bulk_scripts:
+  search_api:
+    endpoint: POST /crm/v3/objects/{objectType}/search
+    max_filter_groups: 5
+    max_filters_per_group: 6
+    max_total_filters: 18  # across all groups
+    max_results_per_page: 200  # default 10
+    max_total_searchable: 10000
+    consistency: "eventually consistent — use batch/read for immediate reads"
+    case_sensitivity: "IN/NOT_IN with strings require LOWERCASE values"
+
+  rate_limits:
+    free_starter: { burst: "100/10s", daily: "250,000/account" }
+    professional: { burst: "190/10s", daily: "625,000/account" }
+    enterprise: { burst: "190/10s", daily: "1,000,000/account" }
+    search: "4 requests/second (stricter)"
+    batch_items: "100 items per request"
+    associations_batch: "2,000 items per request"
+
+  mandatory_features:
+    - "process.env.HUBSPOT_TOKEN for auth"
+    - "--dry-run flag support"
+    - "Retry on 429 with retry-after"
+    - "JSONL logging with timestamp, recordId, action, status"
+    - "Pagination with after cursor"
+    - "Exit code 0 on success, non-zero on failure"
+
+  search_operators:
+    - EQ
+    - NEQ
+    - LT / LTE
+    - GT / GTE
+    - BETWEEN      # needs value + highValue
+    - IN           # needs values array
+    - NOT_IN
+    - HAS_PROPERTY
+    - NOT_HAS_PROPERTY
+    - CONTAINS_TOKEN
+    - NOT_CONTAINS_TOKEN
+
+  lifecycle_stage_warning: >
+    Lifecycle stage can only move FORWARD by default.
+    To move backward: first PATCH to clear (""), then PATCH to set new value.
+    Two API calls per record required.
+
+# ─────────────────────────────────────────────────────────────
+# TEMPLATES
+# ─────────────────────────────────────────────────────────────
+templates:
+  required_fields: [name, version]
+  version_format: semver  # e.g., "1.0.0"
+
+  resource_types:
+    - propertyGroups   # installed 1st
+    - customObjects    # installed 1st
+    - properties       # installed 2nd (needs groups)
+    - pipelines        # installed 2nd (independent)
+    - lists            # installed 3rd (may need properties)
+    - workflows        # installed 4th (may need properties/lists)
+    - associations     # installed last (needs objects)
+
+  dependency_resolution: >
+    Resources are installed in dependency order.
+    Property groups before properties.
+    Custom objects before associations.
+    All resources before workflows (which may reference them).
+
+  partial_failure_handling: >
+    If some resources fail during install, the already-created resources
+    remain in the portal. Check which resources exist, fix the failing
+    specs, and re-install (duplicates will be caught as 409 conflicts).
