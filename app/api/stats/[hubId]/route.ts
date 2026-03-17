@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { isAuthenticated } from "@/lib/api-auth";
 import { authManager } from "@/lib/auth-manager";
 import { changeLogger } from "@/lib/change-logger";
 import { hubSpotClient } from "@/lib/api-client";
@@ -13,8 +12,7 @@ function totalFrom(data: unknown): number {
 
 export async function GET(_req: Request, context: any) {
   const params = await context.params;
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  if (!(await isAuthenticated())) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
   try {
     const stats = await authManager.withPortal(params.hubId, async () => {
