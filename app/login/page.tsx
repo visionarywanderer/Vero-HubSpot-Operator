@@ -30,12 +30,12 @@ function LoginContent() {
           This tool is restricted to internal users. Sign in with Google Workspace (verodigital.co) to access the dashboard, then connect client portals for operation.
         </p>
         {errorMessage && (
-          <div className="card" style={{ marginTop: 14, background: "#fef2f2", borderLeft: "3px solid #dc2626", borderRadius: 12, padding: 12, color: "#991b1b", fontSize: 13 }}>
+          <div style={{ marginTop: 14, background: "rgba(220, 38, 38, 0.15)", borderLeft: "3px solid #ef4444", borderRadius: 8, padding: 12, color: "#fca5a5", fontSize: 13 }}>
             {errorMessage}
           </div>
         )}
-        <button className="btn btn-primary" onClick={() => signIn("google", { callbackUrl })}>Sign in with Google</button>
-        <div className="card" style={{ marginTop: 14, background: "#f7f9fc", borderRadius: 12, padding: 12 }}>
+        <button className="btn btn-primary" style={{ marginTop: 16 }} onClick={() => signIn("google", { callbackUrl })}>Sign in with Google</button>
+        <div style={{ marginTop: 14, background: "var(--bg-raised)", border: "1px solid var(--line)", borderRadius: 8, padding: 12, color: "var(--ink-secondary)", fontSize: 13 }}>
           If you see an access error after signing in, ask an admin to add your email to the allowlist.
         </div>
       </section>
