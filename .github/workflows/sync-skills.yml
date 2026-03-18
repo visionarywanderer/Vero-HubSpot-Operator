@@ -1,0 +1,58 @@
+name: Sync Skills Package
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "skills-package/**"
+      - "CLAUDE.md"
+
+jobs:
+  release-skills:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get version info
+        id: version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          DATE=$(date +%Y%m%d)
+          SKILL_COUNT=$(ls -d skills-package/hubspot-*/ 2>/dev/null | wc -l | tr -d ' ')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "date=$DATE" >> $GITHUB_OUTPUT
+          echo "skill_count=$SKILL_COUNT" >> $GITHUB_OUTPUT
+          echo "tag=skills-v${VERSION}-${DATE}" >> $GITHUB_OUTPUT
+
+      - name: Create skills zip
+        run: |
+          cd skills-package
+          zip -r ../vero-hubspot-skills-${{ steps.version.outputs.version }}.zip . -x "*.DS_Store"
+          cd ..
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: "Skills Package v${{ steps.version.outputs.version }} (${{ steps.version.outputs.date }})"
+          body: |
+            ## Skills Package Update
+
+            **Version:** ${{ steps.version.outputs.version }}
+            **Skills included:** ${{ steps.version.outputs.skill_count }}
+
+            ### How to Install
+            1. Download `vero-hubspot-skills-${{ steps.version.outputs.version }}.zip`
+            2. Unzip and copy all folders to `~/.claude/skills/`
+            3. Restart Claude Desktop
+
+            ### What's Included
+            All HubSpot operator skills including the self-improving learnings knowledge base.
+          files: |
+            vero-hubspot-skills-${{ steps.version.outputs.version }}.zip
+          draft: false
+          prerelease: false

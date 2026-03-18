@@ -40,6 +40,17 @@ const __scriptDir = (() => {
   return process.cwd();
 })();
 
+// Read version from package.json (single source of truth)
+const APP_VERSION = (() => {
+  for (const dir of [__scriptDir, process.cwd()]) {
+    try {
+      const pkg = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"));
+      if (pkg.version) return pkg.version as string;
+    } catch { /* try next */ }
+  }
+  return "0.0.0";
+})();
+
 const envCandidates = [
   join(__scriptDir, ".env.local"),
   join(process.cwd(), ".env.local"),
@@ -142,7 +153,7 @@ function textResult(data: unknown) {
 
 const server = new McpServer({
   name: "hubspot-operator",
-  version: "1.0.0",
+  version: APP_VERSION,
 });
 
 // ---------------------------------------------------------------------------
@@ -769,6 +780,25 @@ server.tool(
   }
 );
 
+// ---------------------------------------------------------------------------
+// Health & Self-Improvement Tools
+// ---------------------------------------------------------------------------
+
+server.tool(
+  "deep_health_check",
+  "Run a deep health check on a HubSpot portal — tests API connectivity, validates action types, checks scopes, detects deprecation warnings. Use this to verify a portal is fully operational before deploying workflows or templates.",
+  {
+    portalId: z.string().describe("Portal/Hub ID to check"),
+  },
+  async ({ portalId }) => {
+    const data = await api({
+      path: "/api/health/deep",
+      query: { portalId },
+    });
+    return textResult(data);
+  }
+);
+
 } // end registerTools()
 
 // Register tools on the global server instance (used in stdio mode)
@@ -838,7 +868,7 @@ async function main() {
       res.end(JSON.stringify({
         status: "ok",
         server: "hubspot-operator-mcp",
-        version: "1.0.0",
+        version: APP_VERSION,
         mode: "proxy",
         target: APP_BASE_URL,
         activeSessions: Object.keys(transports).length,
@@ -936,7 +966,7 @@ async function main() {
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({
         name: "hubspot-operator-mcp",
-        version: "1.0.0",
+        version: APP_VERSION,
         mode: "proxy",
         target: APP_BASE_URL,
         mcp: {
@@ -1017,7 +1047,7 @@ function readBody(req: IncomingMessage): Promise<unknown> {
 // ---------------------------------------------------------------------------
 
 function createMcpServerInstance(): McpServer {
-  const s = new McpServer({ name: "hubspot-operator", version: "1.0.0" });
+  const s = new McpServer({ name: "hubspot-operator", version: APP_VERSION });
   registerTools(s);
   return s;
 }
