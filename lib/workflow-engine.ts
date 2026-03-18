@@ -202,7 +202,7 @@ class HubSpotWorkflowEngine implements WorkflowEngine {
       description: `Deployed workflow "${String(safeSpec.name || "Unnamed")}" (disabled)`,
       after: safeSpec,
       status: "success",
-      initiatedBy: "user"
+      initiatedBy: "VeroDigital"
     });
 
     return {
@@ -252,7 +252,7 @@ class HubSpotWorkflowEngine implements WorkflowEngine {
       description: `Updated workflow "${String(safeSpec.name || "Unnamed")}" (disabled)`,
       after: safeSpec,
       status: "success",
-      initiatedBy: "user"
+      initiatedBy: "VeroDigital"
     });
 
     return {
@@ -285,7 +285,7 @@ class HubSpotWorkflowEngine implements WorkflowEngine {
       recordId: flowId,
       description: `Deleted workflow ${flowId}`,
       status: "success",
-      initiatedBy: "user"
+      initiatedBy: "VeroDigital"
     });
   }
 }

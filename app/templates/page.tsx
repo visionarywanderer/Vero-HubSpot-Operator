@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import { usePortal } from "@/hooks/usePortal";
+import { StatusBadge } from "@/components/shared/StatusBadge";
 import { DraftsTable, type Draft } from "@/components/drafts/DraftsTable";
 import type {
   TemplateDefinition,
@@ -70,7 +71,7 @@ function PackCard({ pack }: { pack: PackDefinition }) {
 }
 
 export default function TemplatesPage() {
-  const { activePortal } = usePortal();
+  const { portals, activePortal, setActivePortal } = usePortal();
   const [templates, setTemplates] = useState<TemplateDefinition[]>([]);
   const [packs, setPacks] = useState<PackDefinition[]>([]);
   const [drafts, setDrafts] = useState<Draft[]>([]);
@@ -154,8 +155,30 @@ export default function TemplatesPage() {
   return (
     <div className="stack">
       <div>
-        <h1 className="page-title">Templates</h1>
-        <p className="page-subtitle">Browse and install HubSpot configuration templates.</p>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <div>
+            <h1 className="page-title">Templates</h1>
+            <p className="page-subtitle">Browse and install HubSpot configuration templates.</p>
+          </div>
+          {portals.length > 0 && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+              <span style={{ fontSize: 12, color: "var(--muted)", whiteSpace: "nowrap" }}>Install to:</span>
+              <select
+                className="select"
+                value={activePortal?.id ?? ""}
+                onChange={(e) => setActivePortal(e.target.value)}
+                style={{ minWidth: 180 }}
+              >
+                {portals.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} ({p.environment === "sandbox" ? "Sandbox" : "Production"})
+                  </option>
+                ))}
+              </select>
+              {activePortal && <StatusBadge status={activePortal.environment} />}
+            </div>
+          )}
+        </div>
         <div className="accent-stripe" />
       </div>
 

@@ -85,7 +85,7 @@ async function logPipelineChange(input: {
       after: input.after,
       status: input.status,
       error: input.error,
-      initiatedBy: "user"
+      initiatedBy: "VeroDigital"
     });
   } catch {
     // Never block on logging.
@@ -100,8 +100,13 @@ class HubSpotPipelineManager implements PipelineManager {
   }
 
   async create(objectType: PipelineObjectType, spec: PipelineSpec): Promise<Pipeline> {
+    // Auto-prefix pipeline label with [VD] if not already present
+    const prefixedSpec = {
+      ...spec,
+      label: spec.label.startsWith("[VD]") ? spec.label : `[VD] ${spec.label}`,
+    };
     try {
-      const response = await hubSpotClient.post(`/crm/v3/pipelines/${objectType}`, spec);
+      const response = await hubSpotClient.post(`/crm/v3/pipelines/${objectType}`, prefixedSpec);
       const pipeline = response.data as Pipeline;
       await logPipelineChange({
         action: "create",

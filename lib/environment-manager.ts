@@ -5,7 +5,6 @@
 
 import { randomUUID } from "crypto";
 import db from "@/lib/db";
-import { extractPortalConfig, type CloneOptions } from "@/lib/portal-cloner";
 import { executeConfig } from "@/lib/config-executor";
 import { createDeploymentSnapshot } from "@/lib/rollback-manager";
 import type { TemplateResources, ExecutionReport } from "@/lib/template-types";
@@ -30,22 +29,6 @@ export interface DeploymentResult {
   snapshotId: string;
 }
 
-export interface PromotionResult {
-  sourceEnv: string;
-  targetEnv: string;
-  extractedResources: TemplateResources;
-  report: ExecutionReport;
-  snapshotId: string;
-  warnings: string[];
-}
-
-// --- Promotion Order ---
-
-const PROMOTION_ORDER: EnvironmentRole[] = ["development", "staging", "production"];
-
-function promotionIndex(role: EnvironmentRole): number {
-  return PROMOTION_ORDER.indexOf(role);
-}
 
 // --- Registry ---
 
@@ -133,64 +116,3 @@ export async function deployToEnvironment(
   };
 }
 
-// --- Promotion ---
-
-export async function promoteEnvironment(
-  sourceEnvName: string,
-  targetEnvName: string,
-  cloneOptions?: Partial<CloneOptions>,
-  dryRun = true
-): Promise<PromotionResult> {
-  const sourceEnv = getEnvironment(sourceEnvName);
-  const targetEnv = getEnvironment(targetEnvName);
-
-  if (!sourceEnv) throw new Error(`Source environment "${sourceEnvName}" not found`);
-  if (!targetEnv) throw new Error(`Target environment "${targetEnvName}" not found`);
-
-  if (sourceEnv.portalId === targetEnv.portalId) {
-    throw new Error("Source and target portals must be different");
-  }
-
-  const warnings: string[] = [];
-
-  // Check promotion order
-  const sourceIdx = promotionIndex(sourceEnv.role);
-  const targetIdx = promotionIndex(targetEnv.role);
-
-  if (targetIdx < sourceIdx) {
-    warnings.push(`Promoting from ${sourceEnv.role} to ${targetEnv.role} is a downgrade`);
-  }
-
-  if (sourceEnv.role === "development" && targetEnv.role === "production") {
-    warnings.push("Direct development to production deployment — staging step skipped");
-  }
-
-  // Extract from source
-  const extracted = await extractPortalConfig(sourceEnv.portalId, cloneOptions);
-
-  // Create snapshot on target before deployment
-  let snapshotId = "";
-  if (!dryRun) {
-    snapshotId = await createDeploymentSnapshot(
-      targetEnv.portalId,
-      extracted.resources,
-      `promote:${sourceEnvName}`,
-      undefined
-    );
-  }
-
-  // Deploy to target
-  const report = await executeConfig(targetEnv.portalId, extracted.resources, {
-    dryRun,
-    templateId: `promote:${sourceEnvName}->${targetEnvName}`,
-  });
-
-  return {
-    sourceEnv: sourceEnvName,
-    targetEnv: targetEnvName,
-    extractedResources: extracted.resources,
-    report,
-    snapshotId,
-    warnings,
-  };
-}

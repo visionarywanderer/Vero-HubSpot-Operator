@@ -10,6 +10,16 @@ function pageLabel(pathname: string): string {
   return pathname.slice(1).split("/").map((s) => s.charAt(0).toUpperCase() + s.slice(1)).join(" / ");
 }
 
+function MenuIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+      <line x1="4" y1="7" x2="20" y2="7" />
+      <line x1="4" y1="12" x2="20" y2="12" />
+      <line x1="4" y1="17" x2="20" y2="17" />
+    </svg>
+  );
+}
+
 export function TopBar({ onMenuClick }: { onMenuClick: () => void }) {
   const pathname = usePathname();
   const { data } = useSession();
@@ -17,7 +27,9 @@ export function TopBar({ onMenuClick }: { onMenuClick: () => void }) {
 
   return (
     <header className="topbar">
-      <button className="menu-btn" onClick={onMenuClick}>☰</button>
+      <button className="menu-btn" onClick={onMenuClick} aria-label="Toggle sidebar">
+        <MenuIcon />
+      </button>
       <div className="breadcrumb">{pageLabel(pathname)}</div>
       <div className="topbar-spacer" />
       {activePortal && (

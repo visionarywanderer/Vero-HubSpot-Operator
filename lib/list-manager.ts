@@ -70,7 +70,7 @@ async function logListChange(input: {
       after: input.after,
       status: input.status,
       error: input.error,
-      initiatedBy: "user"
+      initiatedBy: "VeroDigital"
     });
   } catch {
     // Do not fail list operations when logger fails.
