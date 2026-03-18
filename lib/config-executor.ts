@@ -157,20 +157,18 @@ function normalizeTemplateActions(actions: WorkflowActionSpec[]): WorkflowAction
 async function executeWorkflow(spec: WorkflowResourceSpec): Promise<ResourceExecutionResult> {
   const key = `workflow:${spec.name}`;
   try {
-    // Strip template-validator-only fields that HubSpot API doesn't accept
-    const {
-      enrollmentSchedule: _1, customProperties: _2, dataSources: _3,
-      suppressionListIds: _4, timeWindows: _5, blockedDates: _6,
-      ...rest
-    } = spec as unknown as Record<string, unknown>;
-    const normalizedSpec = {
-      ...rest,
+    // Build a clean workflow spec matching the format that deploy_workflow uses
+    const deploySpec: Record<string, unknown> = {
+      name: spec.name,
+      type: spec.type,
+      objectTypeId: spec.objectTypeId,
       isEnabled: false,
-      flowType: "WORKFLOW",
-      actions: normalizeTemplateActions(spec.actions),
+      startActionId: spec.startActionId,
       nextAvailableActionId: String(spec.nextAvailableActionId),
+      enrollmentCriteria: spec.enrollmentCriteria,
+      actions: normalizeTemplateActions(spec.actions),
     };
-    const result = await workflowEngine.deploy(normalizedSpec);
+    const result = await workflowEngine.deploy(deploySpec);
     if (!result.success) {
       return { key, type: "workflow", status: "error", error: result.errors?.join("; ") || "Workflow deploy failed" };
     }
