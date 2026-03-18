@@ -21,7 +21,7 @@
     "axios": "^1.13.6",
     "better-sqlite3": "^12.6.2",
     "localtunnel": "^2.0.2",
-    "next": "^16.1.6",
+    "next": "^16.1.7",
     "next-auth": "^4.24.7",
     "prism-react-renderer": "^2.4.1",
     "prismjs": "^1.30.0",
