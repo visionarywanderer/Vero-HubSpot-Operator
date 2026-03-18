@@ -85,7 +85,7 @@ export function DraftsTable({ drafts, portalId, onDeploy, onDelete, onEdit, depl
             </tr>
           </thead>
           <tbody>
-            {drafts.map((d) => (
+            {(drafts ?? []).map((d) => (
               <tr key={d.id}>
                 <td>{d.name}</td>
                 {typeLabel && <td style={{ fontSize: 12 }}>{typeLabel(d.spec)}</td>}
