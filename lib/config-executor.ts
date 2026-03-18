@@ -119,26 +119,27 @@ async function executePipeline(spec: PipelineResourceSpec): Promise<ResourceExec
 async function executeWorkflow(spec: WorkflowResourceSpec): Promise<ResourceExecutionResult> {
   const key = `workflow:${spec.name}`;
   try {
-    // Pass only HubSpot-required fields + actions as-is
+    // Build minimal spec and call HubSpot API directly (bypass workflowEngine
+    // which adds defaults that break LIST_BRANCH workflows)
     const specAny = spec as unknown as Record<string, unknown>;
-    const deploySpec: Record<string, unknown> = {
+    const payload: Record<string, unknown> = {
       name: spec.name,
       type: spec.type,
       objectTypeId: spec.objectTypeId,
+      flowType: "WORKFLOW",
+      isEnabled: false,
       startActionId: spec.startActionId,
       nextAvailableActionId: String(spec.nextAvailableActionId),
       enrollmentCriteria: spec.enrollmentCriteria,
       actions: spec.actions,
     };
-    // Include dataSources if present in the template spec
     if (Array.isArray(specAny.dataSources)) {
-      deploySpec.dataSources = specAny.dataSources;
+      payload.dataSources = specAny.dataSources;
     }
-    const result = await workflowEngine.deploy(deploySpec);
-    if (!result.success) {
-      return { key, type: "workflow", status: "error", error: result.errors?.join("; ") || "Workflow deploy failed" };
-    }
-    return { key, type: "workflow", status: "success", hubspotId: result.flowId };
+    const response = await hubSpotClient.post("/automation/v4/flows", payload);
+    const created = response.data as { id?: string; flowId?: string };
+    const flowId = created.id || created.flowId;
+    return { key, type: "workflow", status: "success", hubspotId: flowId };
   } catch (error) {
     return { key, type: "workflow", status: "error", error: error instanceof Error ? error.message : "Failed to deploy workflow" };
   }
