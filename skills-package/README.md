@@ -76,3 +76,4 @@ Your teammate also needs the MCP server configured in Claude Desktop:
 | `hubspot-integration` | Integration patterns — SDK usage, rate limiting |
 | `hubspot-portal-config` | Portal-specific config — owner IDs, naming conventions |
 | `hubspot-learnings` | **⚡ Self-improving** — learns from failures, appends new patterns automatically |
+# Last synced: 2026-03-18T14:05:00Z
