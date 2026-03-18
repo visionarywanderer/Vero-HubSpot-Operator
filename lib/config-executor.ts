@@ -136,6 +136,8 @@ async function executeWorkflow(spec: WorkflowResourceSpec): Promise<ResourceExec
     if (Array.isArray(specAny.dataSources)) {
       payload.dataSources = specAny.dataSources;
     }
+    // Small delay before each workflow creation to avoid HubSpot rate limits
+    await new Promise((resolve) => setTimeout(resolve, 3000));
     const response = await hubSpotClient.post("/automation/v4/flows", payload);
     const created = response.data as { id?: string; flowId?: string };
     const flowId = created.id || created.flowId;
