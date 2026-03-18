@@ -327,7 +327,7 @@ export async function executeConfig(
 
     const completedAt = new Date().toISOString();
     const hasErrors = results.some((r) => r.status === "error");
-    const allErrors = results.every((r) => r.status === "error" || r.status === "skipped");
+    const allErrors = results.length > 0 && results.every((r) => r.status === "error");
     const status = allErrors ? "failed" : hasErrors ? "partial" : "success";
 
     // Log the installation
