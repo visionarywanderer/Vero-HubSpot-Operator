@@ -313,6 +313,16 @@ class BaseHubSpotClient implements HubSpotClient {
     const token = authManager.getToken();
     const url = new URL(`${HUBSPOT_BASE_URL}${pathname}`);
 
+    // SSRF guard: ensure the resolved URL stays on the HubSpot API domain
+    if (url.origin !== new URL(HUBSPOT_BASE_URL).origin) {
+      throw new HubSpotApiError({
+        statusCode: 400,
+        category: "SSRF_BLOCKED",
+        message: `Request blocked: URL resolves to ${url.origin}, expected ${new URL(HUBSPOT_BASE_URL).origin}`,
+        correlationId: "local-ssrf-guard",
+      });
+    }
+
     if (method === "GET" && payload) {
       const params = payload as Record<string, unknown>;
       for (const [key, value] of Object.entries(params)) {

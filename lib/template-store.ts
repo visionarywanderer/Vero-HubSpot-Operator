@@ -55,10 +55,18 @@ class FileSystemTemplateStore implements TemplateStore {
   }
 
   async getTemplate(id: string): Promise<TemplateDefinition | null> {
+    // Sanitize id to prevent path traversal (allow only alphanumeric, dash, underscore)
+    const safeId = id.replace(/[^a-zA-Z0-9_-]/g, "");
+    if (!safeId) return null;
+
     // Try direct file match
-    const direct = await loadJsonFile<TemplateDefinition>(join(TEMPLATES_DIR, `${id}.json`));
+    const filePath = join(TEMPLATES_DIR, `${safeId}.json`);
+    // Verify path stays within TEMPLATES_DIR
+    if (!filePath.startsWith(TEMPLATES_DIR)) return null;
+
+    const direct = await loadJsonFile<TemplateDefinition>(filePath);
     if (direct) {
-      if (!direct.id) direct.id = id;
+      if (!direct.id) direct.id = safeId;
       return direct;
     }
 
