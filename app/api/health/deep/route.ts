@@ -8,7 +8,7 @@ const HUBSPOT_BASE_URL = "https://api.hubapi.com";
 // Known action types and their expected availability
 const ACTION_TYPES_TO_TEST = [
   { id: "0-1", name: "Delay", expectWorking: true },
-  { id: "0-3", name: "Create task", expectWorking: false, knownIssue: "Requires tasks scope — unavailable on portal 45609142" },
+  { id: "0-3", name: "Create task", expectWorking: false, knownIssue: "Requires tasks scope — unavailable on current portal" },
   { id: "0-5", name: "Set property", expectWorking: true },
   { id: "0-8", name: "Internal email notification", expectWorking: true },
   { id: "0-9", name: "In-app notification", expectWorking: false, knownIssue: "Returns silent 500 errors" },
@@ -33,7 +33,7 @@ interface DeepHealthResult {
   hubspot_reachable: boolean;
   endpoints: EndpointCheck[];
   api_versions: { crm: string; automation: string; oauth: string };
-  scopes: string[];
+  scopes_count: number;
   missing_scopes: string[];
   action_types: {
     available: Array<{ id: string; name: string }>;
@@ -42,7 +42,7 @@ interface DeepHealthResult {
   deprecation_warnings: string[];
   token_status: {
     valid: boolean;
-    expiresIn?: number;
+    expiresStatus: "valid" | "expiring" | "expired";
   };
 }
 
@@ -209,6 +209,12 @@ export async function GET(req: Request) {
       }
 
       // --- Build result ---
+      const expiresStatus: "valid" | "expiring" | "expired" =
+        expiresIn === undefined ? (tokenValid ? "valid" : "expired")
+        : expiresIn > 3600 ? "valid"
+        : expiresIn > 0 ? "expiring"
+        : "expired";
+
       const healthResult: DeepHealthResult = {
         ok: hubspotReachable && tokenValid,
         portalId,
@@ -216,7 +222,7 @@ export async function GET(req: Request) {
         hubspot_reachable: hubspotReachable,
         endpoints: endpointChecks,
         api_versions: { crm: "v3", automation: "v4", oauth: "v1" },
-        scopes: currentScopes,
+        scopes_count: currentScopes.length,
         missing_scopes: missingScopes,
         action_types: {
           available: availableActions,
@@ -225,7 +231,7 @@ export async function GET(req: Request) {
         deprecation_warnings: deprecationWarnings,
         token_status: {
           valid: tokenValid,
-          expiresIn,
+          expiresStatus,
         },
       };
 

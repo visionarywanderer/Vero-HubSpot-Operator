@@ -314,9 +314,10 @@ Do I need real-time membership updates?
 
 ## Procedure
 
-1. **Receive** the user's request
-2. **Classify** — single-skill or multi-skill? (see Routing Logic)
-3. **If meeting notes** — invoke Meeting Analysis skill first
+1. **⚡ FIRST: Read `hubspot-learnings` skill** — cross-check against ALL known patterns and failures before any operation. Do NOT skip this step.
+2. **Receive** the user's request
+3. **Classify** — single-skill or multi-skill? (see Routing Logic)
+4. **If meeting notes** — invoke Meeting Analysis skill first
 4. **If multi-skill** — build dependency-resolved execution plan
 5. **Present** the plan with all resources, flags, and tier checks
 6. **Get approval** — "Shall I create these drafts?"

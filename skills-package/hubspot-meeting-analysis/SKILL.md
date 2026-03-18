@@ -348,9 +348,10 @@ After the plan, suggest:
 
 ## Procedure
 
-1. **Receive** meeting notes from user (pasted in chat)
-2. **Extract** all actionable items using Phase 1 categories
-3. **Analyse** gaps, dependencies, tier requirements using Phase 2
+1. **⚡ FIRST: Read `hubspot-learnings` skill** — cross-check against ALL known patterns and failures. Ensure the plan doesn't propose action types or patterns known to fail.
+2. **Receive** meeting notes from user (pasted in chat)
+3. **Extract** all actionable items using Phase 1 categories
+4. **Analyse** gaps, dependencies, tier requirements using Phase 2
 4. **Present** structured plan using Phase 3 format
 5. **Ask** user to approve the plan (or specific sections)
 6. **Execute** approved sections by chaining to the appropriate skills (Phase 4)

@@ -79,23 +79,43 @@ function defaultConfig(portalId: string): PortalConfig {
 
 const FORBIDDEN_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 
+/**
+ * Safely set a nested value in a target object using a dot-separated key path.
+ * Uses a build-then-merge approach to avoid prototype-polluting dynamic assignments.
+ */
 function deepSet(target: Record<string, unknown>, keyPath: string, value: unknown): void {
   const keys = keyPath.split(".").filter(Boolean);
   if (!keys.length) return;
 
-  // Prevent prototype pollution
-  if (keys.some((k) => FORBIDDEN_KEYS.has(k))) return;
-
-  let current: Record<string, unknown> = target;
-  for (let i = 0; i < keys.length - 1; i++) {
-    const key = keys[i];
-    if (typeof current[key] !== "object" || current[key] === null) {
-      current[key] = Object.create(null);
-    }
-    current = current[key] as Record<string, unknown>;
+  // Reject any key that could pollute prototypes
+  for (const k of keys) {
+    if (FORBIDDEN_KEYS.has(k)) return;
   }
 
-  current[keys[keys.length - 1]] = value;
+  // Build the nested structure bottom-up (no dynamic assignments on live objects)
+  let nested: unknown = value;
+  for (let i = keys.length - 1; i > 0; i--) {
+    const wrapper: Record<string, unknown> = Object.create(null);
+    Object.defineProperty(wrapper, keys[i], { value: nested, writable: true, enumerable: true, configurable: true });
+    nested = wrapper;
+  }
+
+  // Merge into target at the top-level key using Object.defineProperty (safe from prototype pollution)
+  const topKey = keys[0];
+  if (keys.length === 1) {
+    Object.defineProperty(target, topKey, { value, writable: true, enumerable: true, configurable: true });
+  } else {
+    // Deep merge: if the top-level key already exists as an object, merge into it
+    const existing = target[topKey];
+    if (typeof existing === "object" && existing !== null) {
+      const merged = JSON.parse(JSON.stringify(existing));
+      const incoming = JSON.parse(JSON.stringify(nested));
+      Object.assign(merged, incoming);
+      Object.defineProperty(target, topKey, { value: merged, writable: true, enumerable: true, configurable: true });
+    } else {
+      Object.defineProperty(target, topKey, { value: nested, writable: true, enumerable: true, configurable: true });
+    }
+  }
 }
 
 class SqlitePortalConfigStore implements PortalConfigStore {

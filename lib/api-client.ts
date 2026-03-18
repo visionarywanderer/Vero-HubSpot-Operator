@@ -202,6 +202,7 @@ class RateLimiter {
   }
 
   private refillTokens(): void {
+    if (Date.now() < this.globalPauseUntil) return; // Don't refill during global pause
     const now = Date.now();
     const elapsedSeconds = (now - this.lastRefill) / 1000;
     this.tokens = Math.min(100, this.tokens + elapsedSeconds * 10);
@@ -311,17 +312,20 @@ class BaseHubSpotClient implements HubSpotClient {
     await authManager.ensureValidatedForSession();
 
     const token = authManager.getToken();
-    const url = new URL(`${HUBSPOT_BASE_URL}${pathname}`);
 
-    // SSRF guard: ensure the resolved URL stays on the HubSpot API domain
-    if (url.origin !== new URL(HUBSPOT_BASE_URL).origin) {
+    // SSRF guard: reject absolute URLs and protocol-relative paths before constructing the URL
+    if (/^[a-z][a-z0-9+.-]*:/i.test(pathname) || pathname.startsWith("//")) {
       throw new HubSpotApiError({
         statusCode: 400,
         category: "SSRF_BLOCKED",
-        message: `Request blocked: URL resolves to ${url.origin}, expected ${new URL(HUBSPOT_BASE_URL).origin}`,
+        message: "Absolute URLs are not allowed in API paths",
         correlationId: "local-ssrf-guard",
       });
     }
+
+    // Ensure pathname starts with / for safety
+    const safePath = pathname.startsWith("/") ? pathname : `/${pathname}`;
+    const url = new URL(`${HUBSPOT_BASE_URL}${safePath}`);
 
     if (method === "GET" && payload) {
       const params = payload as Record<string, unknown>;
@@ -345,6 +349,22 @@ class BaseHubSpotClient implements HubSpotClient {
 
     // --- Deprecation header detection (self-improving) ---
     logDeprecationHeaders(response, pathname);
+
+    if (response.status === 207) {
+      const data = (await response.json()) as unknown;
+      // Log a warning that batch had mixed results
+      safeLog({
+        layer: "api",
+        module: "batch-response",
+        action: "audit",
+        objectType: "batch",
+        recordId: pathname,
+        description: "Batch operation returned 207 Multi-Status — some items may have failed",
+        status: "success",
+        initiatedBy: "system",
+      });
+      return { status: response.status, data };
+    }
 
     if (response.ok) {
       if (response.status === 204) {

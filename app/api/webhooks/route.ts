@@ -175,15 +175,33 @@ export async function POST(req: NextRequest) {
   // Read raw body for signature verification
   const rawBody = await req.text();
 
-  // Verify signature if client secret is configured
-  if (clientSecret) {
-    const signature = req.headers.get("x-hubspot-signature");
-    if (!verifySignature(rawBody, signature, clientSecret)) {
+  // Reject if signature verification is not configured
+  if (!clientSecret) {
+    return NextResponse.json(
+      { error: "Webhook signature verification not configured" },
+      { status: 401 }
+    );
+  }
+
+  // Timestamp validation — reject requests older than 5 minutes
+  const requestTimestamp = req.headers.get("x-hubspot-request-timestamp");
+  if (requestTimestamp) {
+    const timestampMs = Number(requestTimestamp);
+    if (!Number.isNaN(timestampMs) && Math.abs(Date.now() - timestampMs) > 300_000) {
       return NextResponse.json(
-        { error: "Invalid signature" },
+        { error: "Request timestamp too old or too far in the future" },
         { status: 401 }
       );
     }
+  }
+
+  // Verify signature
+  const signature = req.headers.get("x-hubspot-signature");
+  if (!verifySignature(rawBody, signature, clientSecret)) {
+    return NextResponse.json(
+      { error: "Invalid signature" },
+      { status: 401 }
+    );
   }
 
   // Parse events

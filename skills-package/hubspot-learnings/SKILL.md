@@ -46,7 +46,7 @@ These 15 rules prevent 90% of failures. Check every one before deploying.
 | 2 | `defaultBranch` must have `nextActionId` — empty `{}` causes 500 | WORKFLOW |
 | 3 | ENUMERATION fields: `values: []` (array). MULTISTRING fields: `value:` (singular) | WORKFLOW |
 | 4 | Match `operationType` to property type — ENUMERATION for dropdowns, MULTISTRING for text | WORKFLOW |
-| 5 | Action type `0-3` (Create task) needs `tasks` scope — unavailable on portal 45609142 | WORKFLOW |
+| 5 | Action type `0-3` (Create task) needs `tasks` scope — check portal scopes via deep_health_check first | WORKFLOW |
 | 6 | Action types `0-9` (in-app notification) and `0-11` (rotate owner) cause silent 500s | WORKFLOW |
 | 7 | Use Set Property `0-5` with `hubspot_owner_id` instead of rotate-to-owner `0-11` | WORKFLOW |
 | 8 | Deal workflows: use `CONTACT_FLOW` + `dataSources` — NOT `PLATFORM_FLOW` with LIST_BRANCH | WORKFLOW |
@@ -102,20 +102,20 @@ These 15 rules prevent 90% of failures. Check every one before deploying.
 ---
 
 ### 2026-03-18 — WORKFLOW — Action type 0-3 (Create task) requires tasks scope
-**Trigger:** Deployed workflow with Create task action (`0-3`) on portal 45609142
+**Trigger:** Deployed workflow with Create task action (`0-3`) on the target portal
 **Failed because:** Portal doesn't have `tasks` scope available via API
 **Fix:** Use internal email notification (`0-8`) as alternative. Sends email to specified HubSpot users with subject and body.
 ```json
 {
   "actionTypeId": "0-8",
   "fields": {
-    "user_ids": ["551898020"],
+    "user_ids": ["{owner_id}"],
     "subject": "New Lead: {{ enrolled_object.firstname }} {{ enrolled_object.lastname }}",
     "body": "<ul><li>Email: {{ enrolled_object.email }}</li><li>Phone: {{ enrolled_object.phone }}</li></ul>"
   }
 }
 ```
-**Pattern:** On portal 45609142, replace Create task (0-3) with Internal email (0-8)
+**Pattern:** On the target portal, replace Create task (0-3) with Internal email (0-8)
 
 ---
 
@@ -138,11 +138,11 @@ These 15 rules prevent 90% of failures. Check every one before deploying.
   "actionTypeId": "0-5",
   "fields": {
     "property_name": "hubspot_owner_id",
-    "value": { "staticValue": "551898020", "type": "STATIC_VALUE" }
+    "value": { "staticValue": "{owner_id}", "type": "STATIC_VALUE" }
   }
 }
 ```
-Owner IDs: Marcus Torrisi = `551898020`, Pietro = `86844231`
+Owner IDs: Fetch dynamically via `list_portals` → `portal_capabilities`
 **Pattern:** Owner assignment → Set Property 0-5 on hubspot_owner_id with STATIC_VALUE
 
 ---
@@ -155,7 +155,7 @@ Owner IDs: Marcus Torrisi = `551898020`, Pietro = `86844231`
 {
   "actionTypeId": "0-8",
   "fields": {
-    "user_ids": ["551898020"],
+    "user_ids": ["{owner_id}"],
     "subject": "New Lead: {{ enrolled_object.firstname }} {{ enrolled_object.lastname }}",
     "body": "<h3>New Lead Assigned</h3><ul><li><strong>Name:</strong> {{ enrolled_object.firstname }} {{ enrolled_object.lastname }}</li><li><strong>Email:</strong> {{ enrolled_object.email }}</li><li><strong>Phone:</strong> {{ enrolled_object.phone }}</li></ul><p>Please follow up within 24 hours.</p>"
   }

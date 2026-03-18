@@ -25,3 +25,5 @@ generated-scripts
 script-runs
 .server.pid
 .server.log
+dist/
+skills-package.zip
