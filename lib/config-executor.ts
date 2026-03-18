@@ -25,6 +25,7 @@ import type {
   PropertyResourceSpec,
   PipelineResourceSpec,
   WorkflowResourceSpec,
+  WorkflowActionSpec,
   ListResourceSpec,
   CustomObjectSpec,
   AssociationSpec,
