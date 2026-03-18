@@ -157,7 +157,7 @@ function normalizeTemplateActions(actions: WorkflowActionSpec[]): WorkflowAction
 async function executeWorkflow(spec: WorkflowResourceSpec): Promise<ResourceExecutionResult> {
   const key = `workflow:${spec.name}`;
   try {
-    // Build a clean workflow spec matching the format that deploy_workflow uses
+    // Build a clean workflow spec — pass actions as-is (no normalization)
     const deploySpec: Record<string, unknown> = {
       name: spec.name,
       type: spec.type,
@@ -166,8 +166,13 @@ async function executeWorkflow(spec: WorkflowResourceSpec): Promise<ResourceExec
       startActionId: spec.startActionId,
       nextAvailableActionId: String(spec.nextAvailableActionId),
       enrollmentCriteria: spec.enrollmentCriteria,
-      actions: normalizeTemplateActions(spec.actions),
+      actions: spec.actions,
     };
+    // Include dataSources if present (needed for CONTACT_FLOW with fetched objects)
+    const specAny = spec as unknown as Record<string, unknown>;
+    if (Array.isArray(specAny.dataSources) && specAny.dataSources.length > 0) {
+      deploySpec.dataSources = specAny.dataSources;
+    }
     const result = await workflowEngine.deploy(deploySpec);
     if (!result.success) {
       return { key, type: "workflow", status: "error", error: result.errors?.join("; ") || "Workflow deploy failed" };
