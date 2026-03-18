@@ -86,8 +86,8 @@ export default function TemplatesPage() {
     try {
       const res = await fetch("/api/templates");
       if (res.ok) {
-        const data = (await res.json()) as { templates: TemplateDefinition[]; packs: PackDefinition[] };
-        setTemplates(data.templates); setPacks(data.packs);
+        const data = (await res.json()) as { templates?: TemplateDefinition[]; packs?: PackDefinition[] };
+        setTemplates(data.templates ?? []); setPacks(data.packs ?? []);
       }
     } catch {} finally { setLoading(false); }
   }, []);
@@ -95,7 +95,7 @@ export default function TemplatesPage() {
   const refreshDrafts = () => {
     if (!activePortal) { setDrafts([]); return; }
     apiGet<{ ok: true; drafts: Draft[] }>(`/api/templates/drafts?portalId=${encodeURIComponent(activePortal.id)}`)
-      .then((r) => setDrafts(r.drafts)).catch(() => setDrafts([]));
+      .then((r) => setDrafts(r.drafts ?? [])).catch(() => setDrafts([]));
   };
 
   useEffect(() => { fetchTemplates(); }, [fetchTemplates]);
