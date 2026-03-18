@@ -162,6 +162,7 @@ async function executeWorkflow(spec: WorkflowResourceSpec): Promise<ResourceExec
     const normalizedSpec = {
       ...rest,
       isEnabled: false,
+      flowType: "WORKFLOW",
       actions: normalizeTemplateActions(spec.actions),
       nextAvailableActionId: String(spec.nextAvailableActionId),
     };
