@@ -121,8 +121,17 @@ function normalizeTemplateActions(actions: WorkflowActionSpec[]): WorkflowAction
   const reservedKeys = new Set(["actionId", "actionTypeId", "actionTypeVersion", "type", "connection", "fields",
     "listBranches", "staticBranches", "defaultBranch", "defaultBranchName", "inputValue", "filterListBranches"]);
   return actions.map((action) => {
-    const isBranch = ["STATIC_BRANCH", "LIST_BRANCH", "IF_BRANCH", "UNIFIED_BRANCH"].includes(String(action.type || ""));
-    if (isBranch) return action;
+    const branchTypes = ["STATIC_BRANCH", "LIST_BRANCH", "IF_BRANCH", "UNIFIED_BRANCH"];
+    const isBranch = branchTypes.includes(String(action.type || "")) || branchTypes.includes(String(action.actionTypeId || ""));
+    if (isBranch) {
+      // Normalize: move actionTypeId to type for branches
+      const result = { ...action } as Record<string, unknown>;
+      if (branchTypes.includes(String(action.actionTypeId))) {
+        result.type = action.actionTypeId;
+        delete result.actionTypeId;
+      }
+      return result as unknown as WorkflowActionSpec;
+    }
     // Move non-reserved keys into fields
     const fields: Record<string, unknown> = { ...(action.fields as Record<string, unknown> || {}) };
     const normalized: Record<string, unknown> = {};
