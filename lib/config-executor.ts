@@ -30,25 +30,61 @@ import type {
   AssociationSpec,
 } from "@/lib/template-types";
 
+// --- Existence Cache (avoids repeated API calls per objectType) ---
+
+interface ResourceCache {
+  propertyGroups: Map<string, Set<string>>; // objectType → set of group names
+  properties: Map<string, Set<string>>;     // objectType → set of property names
+}
+
+function createResourceCache(): ResourceCache {
+  return { propertyGroups: new Map(), properties: new Map() };
+}
+
+async function getCachedPropertyGroups(cache: ResourceCache, objectType: string): Promise<Set<string>> {
+  if (!cache.propertyGroups.has(objectType)) {
+    const groups = await propertyManager.listGroups(objectType);
+    cache.propertyGroups.set(objectType, new Set(groups.map((g) => g.name)));
+  }
+  return cache.propertyGroups.get(objectType)!;
+}
+
+async function getCachedProperties(cache: ResourceCache, objectType: string): Promise<Set<string>> {
+  if (!cache.properties.has(objectType)) {
+    const props = await propertyManager.list(objectType);
+    cache.properties.set(objectType, new Set(props.map((p) => p.name)));
+  }
+  return cache.properties.get(objectType)!;
+}
+
 // --- Individual Resource Executors ---
 
-async function executePropertyGroup(spec: PropertyGroupSpec): Promise<ResourceExecutionResult> {
+async function executePropertyGroup(spec: PropertyGroupSpec, cache: ResourceCache): Promise<ResourceExecutionResult> {
   const key = `propertyGroup:${spec.name}`;
   try {
+    const existing = await getCachedPropertyGroups(cache, spec.objectType);
+    if (existing.has(spec.name)) {
+      return { key, type: "propertyGroup", status: "skipped", hubspotId: spec.name, error: "Already exists" };
+    }
     const response = await hubSpotClient.post(
       `/crm/v3/properties/${spec.objectType}/groups`,
       { name: spec.name, label: spec.label, displayOrder: spec.displayOrder ?? 0 }
     );
     const data = response.data as { name?: string };
+    existing.add(spec.name);
     return { key, type: "propertyGroup", status: "success", hubspotId: data.name };
   } catch (error) {
     return { key, type: "propertyGroup", status: "error", error: error instanceof Error ? error.message : "Failed to create property group" };
   }
 }
 
-async function executeProperty(spec: PropertyResourceSpec): Promise<ResourceExecutionResult> {
+async function executeProperty(spec: PropertyResourceSpec, cache: ResourceCache): Promise<ResourceExecutionResult> {
   const key = `property:${spec.objectType}:${spec.name}`;
   try {
+    const existing = await getCachedProperties(cache, spec.objectType);
+    if (existing.has(spec.name)) {
+      return { key, type: "property", status: "skipped", hubspotId: spec.name, error: "Already exists" };
+    }
     const result = await propertyManager.create(spec.objectType, {
       name: spec.name,
       label: spec.label,
@@ -58,6 +94,7 @@ async function executeProperty(spec: PropertyResourceSpec): Promise<ResourceExec
       options: spec.options,
       description: spec.description,
     });
+    existing.add(spec.name);
     return { key, type: "property", status: "success", hubspotId: result.name };
   } catch (error) {
     return { key, type: "property", status: "error", error: error instanceof Error ? error.message : "Failed to create property" };
@@ -152,12 +189,12 @@ async function executeAssociation(spec: AssociationSpec): Promise<ResourceExecut
 
 // --- Resource Executor Dispatch ---
 
-async function executeResource(resource: ResolvedResource): Promise<ResourceExecutionResult> {
+async function executeResource(resource: ResolvedResource, cache: ResourceCache): Promise<ResourceExecutionResult> {
   switch (resource.type) {
     case "propertyGroup":
-      return executePropertyGroup(resource.spec as unknown as PropertyGroupSpec);
+      return executePropertyGroup(resource.spec as unknown as PropertyGroupSpec, cache);
     case "property":
-      return executeProperty(resource.spec as unknown as PropertyResourceSpec);
+      return executeProperty(resource.spec as unknown as PropertyResourceSpec, cache);
     case "pipeline":
       return executePipeline(resource.spec as unknown as PipelineResourceSpec);
     case "workflow":
@@ -231,6 +268,7 @@ export async function executeConfig(
   return authManager.withPortal(portalId, async () => {
     const results: ResourceExecutionResult[] = [];
     const failedKeys = new Set<string>();
+    const cache = createResourceCache();
 
     // Group sorted resources into execution tiers: resources with all
     // dependencies already executed can run concurrently within a tier.
@@ -267,7 +305,7 @@ export async function executeConfig(
       if (tier.length === 0 && deferred.length > 0) {
         // Circular dependency safety — execute one at a time to break the cycle
         const [next, ...rest] = deferred;
-        const result = await executeResource(next);
+        const result = await executeResource(next, cache);
         results.push(result);
         if (result.status === "error") failedKeys.add(next.key);
         completedKeys.add(next.key);
@@ -276,7 +314,7 @@ export async function executeConfig(
       }
 
       // Execute the entire tier concurrently
-      const tierResults = await Promise.all(tier.map((resource) => executeResource(resource)));
+      const tierResults = await Promise.all(tier.map((resource) => executeResource(resource, cache)));
 
       for (let i = 0; i < tier.length; i++) {
         results.push(tierResults[i]);
