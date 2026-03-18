@@ -64,8 +64,10 @@ function computeDependencies(
     }
 
     case "workflow": {
+      // Workflows depend on properties (they may reference custom properties)
+      // but NOT on pipelines — pipelines and workflows are independent
       allKeysArray.forEach((k) => {
-        if (k.startsWith("property:") || k.startsWith("pipeline:")) {
+        if (k.startsWith("property:")) {
           deps.push(k);
         }
       });
