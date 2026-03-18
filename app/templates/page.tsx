@@ -145,8 +145,6 @@ export default function TemplatesPage() {
     report.results = report.results ?? [];
     if (report.status === "success" || report.status === "partial") {
       setStatus(`"${draft.name}" installed.`);
-      await apiDelete(`/api/templates/drafts/${draft.id}?portalId=${encodeURIComponent(activePortal.id)}`);
-      refreshDrafts();
     }
     setInstallState({ phase: "done", report });
   };
