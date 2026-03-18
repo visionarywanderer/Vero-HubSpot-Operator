@@ -20,7 +20,8 @@ interface DraftsTableProps {
   typeLabel?: (spec: Record<string, unknown>) => string;
 }
 
-export function DraftsTable({ drafts, portalId, onDeploy, onDelete, onEdit, deployLabel = "Deploy", typeLabel }: DraftsTableProps) {
+export function DraftsTable({ drafts: rawDrafts, portalId, onDeploy, onDelete, onEdit, deployLabel = "Deploy", typeLabel }: DraftsTableProps) {
+  const drafts = Array.isArray(rawDrafts) ? rawDrafts : [];
   const [deploying, setDeploying] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [needsValidation, setNeedsValidation] = useState(false);
