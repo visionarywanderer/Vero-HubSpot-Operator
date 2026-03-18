@@ -119,20 +119,19 @@ async function executePipeline(spec: PipelineResourceSpec): Promise<ResourceExec
 async function executeWorkflow(spec: WorkflowResourceSpec): Promise<ResourceExecutionResult> {
   const key = `workflow:${spec.name}`;
   try {
-    // Build a clean workflow spec — pass actions as-is (no normalization)
+    // Pass only HubSpot-required fields + actions as-is
+    const specAny = spec as unknown as Record<string, unknown>;
     const deploySpec: Record<string, unknown> = {
       name: spec.name,
       type: spec.type,
       objectTypeId: spec.objectTypeId,
-      isEnabled: false,
       startActionId: spec.startActionId,
       nextAvailableActionId: String(spec.nextAvailableActionId),
       enrollmentCriteria: spec.enrollmentCriteria,
       actions: spec.actions,
     };
-    // Include dataSources if present (needed for CONTACT_FLOW with fetched objects)
-    const specAny = spec as unknown as Record<string, unknown>;
-    if (Array.isArray(specAny.dataSources) && specAny.dataSources.length > 0) {
+    // Include dataSources if present in the template spec
+    if (Array.isArray(specAny.dataSources)) {
       deploySpec.dataSources = specAny.dataSources;
     }
     const result = await workflowEngine.deploy(deploySpec);
