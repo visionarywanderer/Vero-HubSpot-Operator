@@ -22,6 +22,9 @@ description: "Self-improving knowledge base for HubSpot API patterns. MUST READ 
 ```
 2. **Update the Quick Reference** if this is a critical rule that prevents common failures
 3. **Copy this file** to `skills-package/hubspot-learnings/SKILL.md` to keep the shareable package in sync
+4. **Offer to commit and deploy**: After appending, ask the user:
+   "I've added a new learning. Want me to commit this to git, push, and deploy? This will update the app and skills-package for everyone."
+   If they say yes, execute: create branch → commit → push → PR → wait for CI → merge → confirm deploy.
 
 ### AFTER a New Success Pattern
 1. If a new approach was used for the first time and succeeded, **append a CONFIRMED entry**:
