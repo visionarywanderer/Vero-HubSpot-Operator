@@ -2,11 +2,13 @@ import { randomUUID } from "crypto";
 import db from "@/lib/db";
 
 function slugify(input: string): string {
+  // Limit input length before regex to prevent ReDoS
+  const truncated = input.slice(0, 120).toLowerCase();
   return (
-    input
-      .toLowerCase()
+    truncated
       .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
+      .replace(/^-+/, "")
+      .replace(/-+$/, "")
       .slice(0, 60) || "artifact"
   );
 }

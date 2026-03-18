@@ -77,15 +77,20 @@ function defaultConfig(portalId: string): PortalConfig {
   };
 }
 
+const FORBIDDEN_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+
 function deepSet(target: Record<string, unknown>, keyPath: string, value: unknown): void {
   const keys = keyPath.split(".").filter(Boolean);
   if (!keys.length) return;
+
+  // Prevent prototype pollution
+  if (keys.some((k) => FORBIDDEN_KEYS.has(k))) return;
 
   let current: Record<string, unknown> = target;
   for (let i = 0; i < keys.length - 1; i++) {
     const key = keys[i];
     if (typeof current[key] !== "object" || current[key] === null) {
-      current[key] = {};
+      current[key] = Object.create(null);
     }
     current = current[key] as Record<string, unknown>;
   }

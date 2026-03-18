@@ -199,13 +199,19 @@ class SqliteChangeLogger implements ChangeLogger {
   }
 
   async exportLog(portalId: string, format: "json" | "csv"): Promise<string> {
+    // Sanitize portalId to prevent path traversal (allow only alphanumeric, dash, underscore)
+    const safePortalId = portalId.replace(/[^a-zA-Z0-9_-]/g, "");
+    if (!safePortalId) throw new Error("Invalid portalId");
+
     const entries = await this.getLog(portalId);
     await mkdir(EXPORT_ROOT, { recursive: true });
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
 
     if (format === "json") {
-      const filePath = path.join(EXPORT_ROOT, `${portalId}-${timestamp}.json`);
+      const filePath = path.join(EXPORT_ROOT, `${safePortalId}-${timestamp}.json`);
+      // Verify path stays within EXPORT_ROOT
+      if (!filePath.startsWith(EXPORT_ROOT)) throw new Error("Path traversal blocked");
       await writeFile(filePath, JSON.stringify(entries, null, 2), "utf8");
       return filePath;
     }
@@ -237,7 +243,9 @@ class SqliteChangeLogger implements ChangeLogger {
     );
 
     const csv = `${headers.join(",")}\n${rows.join("\n")}`;
-    const filePath = path.join(EXPORT_ROOT, `${portalId}-${timestamp}.csv`);
+    const filePath = path.join(EXPORT_ROOT, `${safePortalId}-${timestamp}.csv`);
+    // Verify path stays within EXPORT_ROOT
+    if (!filePath.startsWith(EXPORT_ROOT)) throw new Error("Path traversal blocked");
     await writeFile(filePath, csv, "utf8");
     return filePath;
   }
