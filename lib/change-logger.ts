@@ -12,7 +12,8 @@ export type ChangeAction =
   | "workflow_deploy"
   | "property_create"
   | "list_create"
-  | "script_execute";
+  | "script_execute"
+  | "audit";
 
 export type ChangeStatus = "success" | "error" | "dry_run";
 

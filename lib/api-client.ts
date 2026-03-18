@@ -333,6 +333,9 @@ class BaseHubSpotClient implements HubSpotClient {
       cache: "no-store"
     });
 
+    // --- Deprecation header detection (self-improving) ---
+    logDeprecationHeaders(response, pathname);
+
     if (response.ok) {
       if (response.status === 204) {
         return { status: response.status, data: {} };
@@ -412,6 +415,65 @@ async function normalizeError(response: Response): Promise<HubSpotError> {
     return normalized;
   } catch {
     return fallback;
+  }
+}
+
+/**
+ * Detect and log HubSpot deprecation/sunset headers.
+ * These indicate upcoming breaking changes that need attention.
+ * Logs to change_log for visibility and persists to app_settings for the health check.
+ */
+function logDeprecationHeaders(response: Response, pathname: string): void {
+  try {
+    const deprecation = response.headers.get("deprecation") || response.headers.get("x-deprecation");
+    const sunset = response.headers.get("sunset");
+    const link = response.headers.get("link"); // Often contains successor URL
+
+    if (!deprecation && !sunset) return;
+
+    const warning = {
+      endpoint: pathname,
+      deprecation: deprecation || undefined,
+      sunset: sunset || undefined,
+      successor: link || undefined,
+      detectedAt: new Date().toISOString(),
+    };
+
+    // Log to change_log for audit trail
+    safeLog({
+      layer: "api",
+      module: "deprecation-detector",
+      action: "audit",
+      objectType: "api_endpoint",
+      recordId: pathname,
+      description: `API deprecation detected: ${pathname}${sunset ? ` (sunset: ${sunset})` : ""}`,
+      after: warning,
+      status: "success",
+      initiatedBy: "system",
+    });
+
+    // Persist to app_settings for the deep health check to read
+    const dbModule = require("@/lib/db");
+    const dbInstance = dbModule.default;
+    const key = "deprecation_warnings";
+    const existing = dbInstance.prepare("SELECT value FROM app_settings WHERE key = ?").get(key) as { value: string } | undefined;
+    const warnings: object[] = existing ? JSON.parse(existing.value) : [];
+
+    // Avoid duplicate warnings for the same endpoint
+    const isDuplicate = warnings.some(
+      (w) => (w as Record<string, unknown>).endpoint === pathname && (w as Record<string, unknown>).deprecation === deprecation
+    );
+    if (!isDuplicate) {
+      warnings.push(warning);
+      // Keep only last 50 warnings
+      const trimmed = warnings.slice(-50);
+      dbInstance.prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)").run(
+        key,
+        JSON.stringify(trimmed)
+      );
+    }
+  } catch {
+    // Never block API operations on deprecation logging failures
   }
 }
 
