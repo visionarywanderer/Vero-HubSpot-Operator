@@ -648,25 +648,6 @@ server.tool(
 );
 
 server.tool(
-  "save_clone_draft",
-  "Save a portal clone configuration as a local draft (does NOT execute the clone). Checks for duplicate drafts.",
-  {
-    spec: z.record(z.unknown()).describe("Clone config with sourcePortalId, targetPortalId, options, extractedTemplate"),
-    name: z.string().optional(),
-    portalId: z.string().optional(),
-  },
-  async ({ spec, name, portalId }) => {
-    const draftName = name || String(spec.name || "Untitled Clone Config");
-    const data = await api({
-      method: "POST",
-      path: "/api/clone/drafts",
-      body: { name: draftName, spec, portalId },
-    });
-    return textResult(data);
-  }
-);
-
-server.tool(
   "save_custom_object_draft",
   "Save a custom object spec as a local draft (does NOT create in HubSpot). Checks for duplicate drafts.",
   {
@@ -736,54 +717,6 @@ server.tool(
       method: "POST",
       path: "/api/templates/install",
       body: { templateId, portalId, dryRun },
-    });
-    return textResult(data);
-  }
-);
-
-// ---------------------------------------------------------------------------
-// Portal Cloning Tools
-// ---------------------------------------------------------------------------
-
-server.tool(
-  "extract_portal_config",
-  "Extract all custom configuration (properties, pipelines, lists) from a portal as a template",
-  {
-    portalId: z.string(),
-    includeProperties: z.boolean().optional().describe("Default: true"),
-    includePipelines: z.boolean().optional().describe("Default: true"),
-    includeLists: z.boolean().optional().describe("Default: true"),
-  },
-  async ({ portalId, includeProperties, includePipelines, includeLists }) => {
-    const data = await api({
-      method: "POST",
-      path: "/api/clone/extract",
-      body: {
-        sourcePortalId: portalId,
-        options: {
-          properties: includeProperties ?? true,
-          pipelines: includePipelines ?? true,
-          lists: includeLists ?? true,
-        },
-      },
-    });
-    return textResult(data);
-  }
-);
-
-server.tool(
-  "clone_portal",
-  "Clone configuration from one portal to another (dry-run by default)",
-  {
-    sourcePortalId: z.string(),
-    targetPortalId: z.string(),
-    dryRun: z.boolean().optional().describe("Default: true — preview without applying"),
-  },
-  async ({ sourcePortalId, targetPortalId, dryRun }) => {
-    const data = await api({
-      method: "POST",
-      path: "/api/clone/execute",
-      body: { sourcePortalId, targetPortalId, dryRun: dryRun ?? true },
     });
     return textResult(data);
   }

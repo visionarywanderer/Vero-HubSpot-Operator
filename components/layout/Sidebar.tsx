@@ -11,38 +11,35 @@ type NavGroup = { group: string; items: NavItem[] };
 
 const NAV: NavGroup[] = [
   {
-    group: "OPERATE",
+    group: "OVERVIEW",
     items: [
       { label: "Dashboard", href: "/" },
       { label: "How It Works", href: "/how-it-works" },
+    ],
+  },
+  {
+    group: "CONFIGURE",
+    items: [
       { label: "Templates", href: "/templates" },
+      { label: "Properties", href: "/properties" },
+      { label: "Pipelines", href: "/pipelines" },
+      { label: "Workflows", href: "/workflows" },
+      { label: "Lists & Segments", href: "/lists" },
+    ],
+  },
+  {
+    group: "OPERATIONS",
+    items: [
+      { label: "Bulk Operations", href: "/bulk" },
       { label: "Prompt Packs", href: "/prompt-packs" },
     ],
   },
   {
-    group: "MANAGE",
+    group: "PORTALS",
     items: [
       { label: "Portals", href: "/portals" },
-      { label: "Workflows", href: "/workflows" },
-      { label: "Properties", href: "/properties" },
-      { label: "Lists & Segments", href: "/lists" },
-      { label: "Pipelines", href: "/pipelines" },
-      { label: "Bulk Operations", href: "/bulk" },
-    ],
-  },
-  {
-    group: "INFRASTRUCTURE",
-    items: [
       { label: "Environments", href: "/environments" },
-      { label: "Clone Portal", href: "/clone" },
-      { label: "Config Diff", href: "/diff" },
       { label: "Deployments", href: "/deployments" },
-    ],
-  },
-  {
-    group: "VERO TOOLS",
-    items: [
-      { label: "HubSpot Audit", href: "https://hubspot-audit-tool-production.up.railway.app/", external: true },
     ],
   },
   {
@@ -50,15 +47,16 @@ const NAV: NavGroup[] = [
     items: [
       { label: "Activity Log", href: "/activity" },
       { label: "Settings", href: "/settings" },
+      { label: "HubSpot Audit", href: "https://hubspot-audit-tool-production.up.railway.app/", external: true },
     ],
   },
 ];
 
-export function Sidebar({ mobileOpen, onClose }: { mobileOpen: boolean; onClose: () => void }) {
+export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const pathname = usePathname();
   const { data } = useSession();
 
-  const activeGroup = NAV.find((g) => g.items.some((item) => item.href === pathname))?.group || "OPERATE";
+  const activeGroup = NAV.find((g) => g.items.some((item) => item.href === pathname))?.group || "OVERVIEW";
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set([activeGroup]));
 
   const toggleGroup = (group: string) => {
@@ -71,7 +69,7 @@ export function Sidebar({ mobileOpen, onClose }: { mobileOpen: boolean; onClose:
   };
 
   return (
-    <aside className={`sidebar ${mobileOpen ? "open" : ""}`}>
+    <aside className={`sidebar${isOpen ? "" : " collapsed"}`}>
       <div className="sidebar-header">
         <div className="logo">VeroHub</div>
         <div className="subtitle">HubSpot Operator</div>
@@ -82,7 +80,7 @@ export function Sidebar({ mobileOpen, onClose }: { mobileOpen: boolean; onClose:
 
       <nav className="nav-groups">
         {NAV.map((group) => {
-          const isOpen = openGroups.has(group.group);
+          const isGroupOpen = openGroups.has(group.group);
           const hasActiveItem = group.items.some((item) => item.href === pathname);
 
           return (
@@ -91,9 +89,9 @@ export function Sidebar({ mobileOpen, onClose }: { mobileOpen: boolean; onClose:
                 <span className={`nav-label${hasActiveItem ? " nav-label-active" : ""}`}>
                   {group.group}
                 </span>
-                <span className={`nav-chevron${isOpen ? " open" : ""}`}>›</span>
+                <span className={`nav-chevron${isGroupOpen ? " open" : ""}`}>&#8250;</span>
               </div>
-              <div className="nav-items" style={{ maxHeight: isOpen ? `${group.items.length * 34}px` : "0px" }}>
+              <div className="nav-items" style={{ maxHeight: isGroupOpen ? `${group.items.length * 36}px` : "0px" }}>
                 {group.items.map((item) => {
                   if (item.external) {
                     return (

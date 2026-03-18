@@ -84,7 +84,21 @@ A consolidated reference of common mistakes when building HubSpot integrations. 
 | Including `createdAt`/`updatedAt` in PUT body | Validation error | Strip system fields from GET response before PUT |
 | Deleting workflows expecting undo | Deletion is permanent via API | Confirm before deleting; export config first |
 
-## 8. General Integration Anti-patterns
+## 8. Workflow Deployment Anti-patterns (VeroHub Operator)
+
+| Anti-pattern | Impact | Correct Approach |
+|-------------|--------|------------------|
+| Multi-branch LIST_BRANCH (2+ branches in one action) | API silently fails or creates broken workflow | Chain single-branch LIST_BRANCH actions sequentially |
+| Using `0-3` (Create task) inside LIST_BRANCH workflows | Action fails at runtime | Use `0-8` (notification) or `0-5` (set property) inside LIST_BRANCH |
+| PLATFORM_FLOW for deal-based LIST_BRANCH workflows | LIST_BRANCH filters fail on PLATFORM_FLOW deals | Use CONTACT_FLOW with `dataSources` to fetch associated deals |
+| Running `normalizeWorkflowDefaults` on template JSON | Overwrites critical LIST_BRANCH structure | Bypass normalization — POST template JSON directly to `/automation/v4/flows` |
+| Running `workflowEngine.deploy()` for template installs | Adds defaults that break LIST_BRANCH workflows | Call HubSpot API directly for template installs |
+| Running workflow constraint validator on templates | Validator expects different format than API | Skip validation for template installs |
+| Omitting `includeObjectsWithNoValueSet: false` in filters | Filter matches records with empty values (false positives) | Always include `includeObjectsWithNoValueSet: false` |
+| Creating multiple workflows without delay | HubSpot rate limits workflow creation | Add 3-second delay between workflow creations |
+| Deleting template after install | Can't reuse template for other portals | Keep template drafts — persist for reuse across portals |
+
+## 9. General Integration Anti-patterns
 
 | Anti-pattern | Impact | Correct Approach |
 |-------------|--------|------------------|
@@ -111,3 +125,17 @@ Before deploying a HubSpot integration:
 - [ ] Data: `email` included on all contact creates
 - [ ] Pagination: `after` cursor followed to completion
 - [ ] Error rate monitoring in place
+- [ ] Workflows: Read `hubspot-workflows-reference.md` before creating any workflow
+- [ ] Workflows: Using `listBranches` (not `filterListBranches`) for LIST_BRANCH
+- [ ] Workflows: `nextAvailableActionId` is a string, equals highest actionId + 1
+- [ ] Workflows: Deploy as `isEnabled: false`, configure in HubSpot UI, then enable
+- [ ] Workflows: Check property type before choosing filter operator (string→MULTISTRING, enum→ENUMERATION)
+- [ ] Workflows: `MULTISTRING CONTAINS` uses singular `value`, `ENUMERATION IS_ANY_OF` uses `values` array
+- [ ] Workflows: Association PUT body is `[]` array, not `{}` object
+- [ ] Workflows: Batch upsert inputs need `id` field matching the `idProperty` value
+- [ ] Workflows: Single-branch LIST_BRANCH only (no multi-branch in one action)
+- [ ] Workflows: No `0-3` (Create task) inside LIST_BRANCH — use `0-8` or `0-5`
+- [ ] Workflows: Deal workflows → use CONTACT_FLOW + dataSources, not PLATFORM_FLOW
+- [ ] Workflows: Template installs → bypass normalizeWorkflowDefaults and workflowEngine.deploy()
+- [ ] Workflows: Add 3s delay between workflow creations to avoid rate limits
+- [ ] Workflows: Always include `includeObjectsWithNoValueSet: false` in LIST_BRANCH filters

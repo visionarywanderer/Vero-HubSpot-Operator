@@ -102,10 +102,12 @@ async function executeProperty(spec: PropertyResourceSpec, cache: ResourceCache)
 }
 
 async function executePipeline(spec: PipelineResourceSpec): Promise<ResourceExecutionResult> {
-  const key = `pipeline:${spec.objectType}:${spec.label}`;
+  // Auto-prefix pipeline label with [VD] if not already present
+  const label = spec.label.startsWith("[VD]") ? spec.label : `[VD] ${spec.label}`;
+  const key = `pipeline:${spec.objectType}:${label}`;
   try {
     const result = await pipelineManager.create(spec.objectType, {
-      label: spec.label,
+      label,
       displayOrder: spec.displayOrder,
       stages: spec.stages,
     });
@@ -358,7 +360,7 @@ export async function executeConfig(
         description: `Template installation: ${status} (${results.filter((r) => r.status === "success").length}/${results.length} resources)`,
         after: { results },
         status: status === "failed" ? "error" : "success",
-        initiatedBy: "system",
+        initiatedBy: "VeroDigital",
       });
     } catch {
       // Never block on logging

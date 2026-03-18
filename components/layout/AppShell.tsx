@@ -6,13 +6,13 @@ import { TopBar } from "@/components/layout/TopBar";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const [mobileOpen, setMobileOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   return (
-    <div className="app-shell">
-      <Sidebar mobileOpen={mobileOpen} onClose={() => setMobileOpen(false)} />
+    <div className={`app-shell${sidebarOpen ? "" : " sidebar-collapsed"}`}>
+      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="app-main">
-        <TopBar onMenuClick={() => setMobileOpen((v) => !v)} />
+        <TopBar onMenuClick={() => setSidebarOpen((v) => !v)} />
         <main className="page-content">
           <ErrorBoundary>{children}</ErrorBoundary>
         </main>
