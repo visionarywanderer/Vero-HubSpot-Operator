@@ -158,7 +158,15 @@ async function executeWorkflow(spec: WorkflowResourceSpec): Promise<ResourceExec
   const key = `workflow:${spec.name}`;
   try {
     // Strip template-validator-only fields that HubSpot API doesn't accept
-    const { enrollmentSchedule: _es, ...rest } = spec as unknown as Record<string, unknown>;
+    const {
+      enrollmentSchedule: _es,
+      customProperties: _cp,
+      dataSources: _ds,
+      suppressionListIds: _sl,
+      timeWindows: _tw,
+      blockedDates: _bd,
+      ...rest
+    } = spec as unknown as Record<string, unknown>;
     const normalizedSpec = {
       ...rest,
       isEnabled: false,
