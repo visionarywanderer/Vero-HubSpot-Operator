@@ -125,7 +125,7 @@ function normalizeTemplateActions(actions: WorkflowActionSpec[]): WorkflowAction
     const isBranch = branchTypes.includes(String(action.type || "")) || branchTypes.includes(String(action.actionTypeId || ""));
     if (isBranch) {
       // Normalize: move actionTypeId to type, add edgeType to all connections
-      const { actionTypeId: _atid, ...rest } = action as unknown as Record<string, unknown>;
+      const { actionTypeId: _atid, actionTypeVersion: _atv, ...rest } = action as unknown as Record<string, unknown>;
       const branchType = branchTypes.includes(String(_atid)) ? String(_atid) : String(rest.type || _atid);
       const result = { ...rest, type: branchType } as Record<string, unknown>;
       // Ensure edgeType on defaultBranch and all branch connections
