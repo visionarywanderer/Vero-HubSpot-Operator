@@ -232,13 +232,14 @@ export async function executeConfig(
 ): Promise<ExecutionReport> {
   const startedAt = new Date().toISOString();
 
-  // Validate
+  // Validate (skip workflows — they use HubSpot API format, not validator format)
+  const { workflows: _wf, ...validationResources } = resources;
   const validation = validateTemplate({
     id: options?.templateId || "inline",
     name: "inline-config",
     version: "1.0.0",
     description: "Inline configuration",
-    resources,
+    resources: validationResources,
   });
 
   if (!validation.valid) {
