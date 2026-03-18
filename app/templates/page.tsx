@@ -112,8 +112,14 @@ export default function TemplatesPage() {
     setInstallState({ phase: "installing", templateId });
     try {
       const res = await fetch("/api/templates/install", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ templateId, portalId: activePortal.id }) });
-      const report = (await res.json()) as ExecutionReport;
-      setInstallState({ phase: "done", report });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        setInstallState({ phase: "error", message: data.error || `Installation failed (${res.status})` });
+      } else {
+        const report = data as ExecutionReport;
+        report.results = report.results ?? [];
+        setInstallState({ phase: "done", report });
+      }
     } catch (error) { setInstallState({ phase: "error", message: error instanceof Error ? error.message : "Installation failed" }); }
   };
 
@@ -130,7 +136,13 @@ export default function TemplatesPage() {
     if (!activePortal) return;
     setError(""); setStatus("");
     const res = await fetch("/api/templates/install", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ resources: draft.spec.resources || draft.spec, portalId: activePortal.id }) });
-    const report = (await res.json()) as ExecutionReport;
+    const data = await res.json();
+    if (!res.ok || data.error) {
+      setError(data.error || `Install failed (${res.status})`);
+      return;
+    }
+    const report = data as ExecutionReport;
+    report.results = report.results ?? [];
     if (report.status === "success" || report.status === "partial") {
       setStatus(`"${draft.name}" installed.`);
       await apiDelete(`/api/templates/drafts/${draft.id}`);
