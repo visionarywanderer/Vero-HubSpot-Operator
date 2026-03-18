@@ -41,7 +41,18 @@ export interface WorkflowEngine {
 }
 
 export function normalizeWorkflowDefaults(spec: WorkflowSpec): WorkflowSpec {
-  return { ...spec, isEnabled: false, flowType: spec.flowType ?? "WORKFLOW" };
+  return {
+    ...spec,
+    isEnabled: false,
+    flowType: spec.flowType ?? "WORKFLOW",
+    crmObjectCreationStatus: spec.crmObjectCreationStatus ?? "COMPLETE",
+    canEnrollFromSalesforce: spec.canEnrollFromSalesforce ?? false,
+    customProperties: spec.customProperties ?? {},
+    dataSources: spec.dataSources ?? [],
+    suppressionListIds: spec.suppressionListIds ?? [],
+    timeWindows: spec.timeWindows ?? [],
+    blockedDates: spec.blockedDates ?? [],
+  };
 }
 
 class HubSpotWorkflowEngine implements WorkflowEngine {
