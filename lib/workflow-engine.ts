@@ -41,16 +41,18 @@ export interface WorkflowEngine {
 }
 
 export function normalizeWorkflowDefaults(spec: WorkflowSpec): WorkflowSpec {
-  return {
+  const normalized: Record<string, unknown> = {
     ...spec,
     isEnabled: false,
     flowType: spec.flowType ?? "WORKFLOW",
-    crmObjectCreationStatus: spec.crmObjectCreationStatus ?? "COMPLETE",
-    timeWindows: Array.isArray(spec.timeWindows) ? spec.timeWindows : [],
-    blockedDates: Array.isArray(spec.blockedDates) ? spec.blockedDates : [],
-    suppressionListIds: Array.isArray(spec.suppressionListIds) ? spec.suppressionListIds : [],
-    canEnrollFromSalesforce: false
+    canEnrollFromSalesforce: false,
   };
+  // Only include these if explicitly provided — HubSpot rejects empty arrays on some workflow types
+  if (spec.crmObjectCreationStatus) normalized.crmObjectCreationStatus = spec.crmObjectCreationStatus;
+  if (Array.isArray(spec.timeWindows) && spec.timeWindows.length > 0) normalized.timeWindows = spec.timeWindows;
+  if (Array.isArray(spec.blockedDates) && spec.blockedDates.length > 0) normalized.blockedDates = spec.blockedDates;
+  if (Array.isArray(spec.suppressionListIds) && spec.suppressionListIds.length > 0) normalized.suppressionListIds = spec.suppressionListIds;
+  return normalized as WorkflowSpec;
 }
 
 class HubSpotWorkflowEngine implements WorkflowEngine {
