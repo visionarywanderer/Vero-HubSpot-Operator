@@ -117,7 +117,7 @@ export default function DashboardPage() {
           <div className="stack" style={{ gap: 6 }}>
             <Link href="/how-it-works" className="btn btn-primary" style={{ textAlign: "left" }}>How It Works — Start Here</Link>
             <Link href="/templates" className="btn btn-primary" style={{ textAlign: "left" }}>Install Templates</Link>
-            <Link href="/prompt-packs" className="btn btn-primary" style={{ textAlign: "left" }}>Prompt Packs for Claude</Link>
+            <Link href="/pipelines" className="btn btn-primary" style={{ textAlign: "left" }}>Manage Pipelines</Link>
             <Link href="/properties" className="btn btn-ghost" style={{ textAlign: "left" }}>Manage Properties</Link>
             <Link href="/workflows" className="btn btn-ghost" style={{ textAlign: "left" }}>Manage Workflows</Link>
             <Link href="/environments" className="btn btn-ghost" style={{ textAlign: "left" }}>Manage Environments</Link>

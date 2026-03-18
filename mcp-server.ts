@@ -629,25 +629,6 @@ server.tool(
 );
 
 server.tool(
-  "save_script_draft",
-  "Save a bulk operation script as a local draft (does NOT execute). Checks for duplicate drafts.",
-  {
-    spec: z.record(z.unknown()).describe("Script definition with code, description"),
-    name: z.string().optional(),
-    portalId: z.string().optional(),
-  },
-  async ({ spec, name, portalId }) => {
-    const draftName = name || String(spec.description || spec.name || "Untitled Script");
-    const data = await api({
-      method: "POST",
-      path: "/api/scripts/drafts",
-      body: { name: draftName, spec, portalId },
-    });
-    return textResult(data);
-  }
-);
-
-server.tool(
   "save_custom_object_draft",
   "Save a custom object spec as a local draft (does NOT create in HubSpot). Checks for duplicate drafts.",
   {

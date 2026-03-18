@@ -339,7 +339,6 @@ export default function HowItWorksPage() {
               { num: 3, label: "Pipelines", desc: "Deal stages, ticket stages", page: "/pipelines", color: "var(--info)" },
               { num: 4, label: "Lists & Segments", desc: "Dynamic audiences, filters", page: "/lists", color: "var(--success)" },
               { num: 5, label: "Workflows", desc: "Automations, triggers, actions", page: "/workflows", color: "var(--warning)" },
-              { num: 6, label: "Bulk Operations", desc: "Data cleanup, mass updates", page: "/bulk", color: "var(--danger)" },
             ].map((step, i) => (
               <div key={step.num}>
                 <div style={{
@@ -361,7 +360,7 @@ export default function HowItWorksPage() {
                   </div>
                   <PageLink href={step.page} label="Deploy" />
                 </div>
-                {i < 5 && <Connector height={8} />}
+                {i < 4 && <Connector height={8} />}
               </div>
             ))}
           </div>
@@ -465,7 +464,6 @@ export default function HowItWorksPage() {
             { category: "Pipelines", color: "var(--success)", examples: ["Build a 7-stage SaaS sales pipeline", "Create a support ticket pipeline", "Add a renewal pipeline for deals"] },
             { category: "Workflows", color: "var(--warning)", examples: ["When a trial starts, create a follow-up task", "Set lifecycle stage when lead score hits 80", "Send notification when deal moves to Proposal"] },
             { category: "Lists & Segments", color: "#b39ddb", examples: ["Create a list of all MQLs from last 30 days", "Segment contacts by product interest", "Build a suppression list for churned customers"] },
-            { category: "Bulk Operations", color: "var(--danger)", examples: ["Clean up phone number formatting", "Update all contacts where lead status is empty", "Backfill lifecycle stage for existing contacts"] },
           ].map((cat) => (
             <div key={cat.category} style={{
               padding: "12px 14px", borderRadius: "var(--radius-md)",
@@ -575,7 +573,6 @@ export default function HowItWorksPage() {
               { icon: <IconGitBranch size={20} />, name: "Pipelines", tool: "save_pipeline_draft", color: "var(--info)", page: "/pipelines" },
               { icon: <IconZap size={20} />, name: "Workflows", tool: "save_workflow_draft", color: "var(--warning)", page: "/workflows" },
               { icon: <IconUsers size={20} />, name: "Lists", tool: "save_list_draft", color: "var(--success)", page: "/lists" },
-              { icon: <IconGrid size={20} />, name: "Bulk Ops", tool: "save_script_draft", color: "var(--danger)", page: "/bulk" },
               { icon: <IconPackage size={20} />, name: "Templates", tool: "save_template_draft", color: "#b39ddb", page: "/templates" },
             ].map((s) => (
               <Link key={s.name} href={s.page} style={{

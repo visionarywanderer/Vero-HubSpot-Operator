@@ -28,13 +28,6 @@ const NAV: NavGroup[] = [
     ],
   },
   {
-    group: "OPERATIONS",
-    items: [
-      { label: "Bulk Operations", href: "/bulk" },
-      { label: "Prompt Packs", href: "/prompt-packs" },
-    ],
-  },
-  {
     group: "PORTALS",
     items: [
       { label: "Portals", href: "/portals" },
