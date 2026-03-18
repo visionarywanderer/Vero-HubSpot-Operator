@@ -25,7 +25,6 @@ import type {
   PropertyResourceSpec,
   PipelineResourceSpec,
   WorkflowResourceSpec,
-  WorkflowActionSpec,
   ListResourceSpec,
   CustomObjectSpec,
   AssociationSpec,
@@ -115,43 +114,6 @@ async function executePipeline(spec: PipelineResourceSpec): Promise<ResourceExec
   } catch (error) {
     return { key, type: "pipeline", status: "error", error: error instanceof Error ? error.message : "Failed to create pipeline" };
   }
-}
-
-function normalizeTemplateActions(actions: WorkflowActionSpec[]): WorkflowActionSpec[] {
-  const reservedKeys = new Set(["actionId", "actionTypeId", "actionTypeVersion", "type", "connection", "fields",
-    "listBranches", "staticBranches", "defaultBranch", "defaultBranchName", "inputValue", "filterListBranches"]);
-  return actions.map((action) => {
-    const branchTypes = ["STATIC_BRANCH", "LIST_BRANCH", "IF_BRANCH", "UNIFIED_BRANCH"];
-    const isBranch = branchTypes.includes(String(action.type || "")) || branchTypes.includes(String(action.actionTypeId || ""));
-    if (isBranch) {
-      // Normalize: move actionTypeId to type, add edgeType to all connections
-      const { actionTypeId: _atid, actionTypeVersion: _atv, ...rest } = action as unknown as Record<string, unknown>;
-      const branchType = branchTypes.includes(String(_atid)) ? String(_atid) : String(rest.type || _atid);
-      const result = { ...rest, type: branchType } as Record<string, unknown>;
-      // Ensure edgeType on defaultBranch and all branch connections
-      const addEdge = (conn: Record<string, unknown> | undefined) => {
-        if (conn && !conn.edgeType) conn.edgeType = "STANDARD";
-      };
-      addEdge(result.defaultBranch as Record<string, unknown> | undefined);
-      const branches = (result.listBranches || result.staticBranches || []) as Array<Record<string, unknown>>;
-      for (const b of branches) addEdge(b.connection as Record<string, unknown> | undefined);
-      return result as unknown as WorkflowActionSpec;
-    }
-    // Move non-reserved keys into fields
-    const fields: Record<string, unknown> = { ...(action.fields as Record<string, unknown> || {}) };
-    const normalized: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(action)) {
-      if (reservedKeys.has(key)) { normalized[key] = value; }
-      else { fields[key] = value; }
-    }
-    normalized.fields = fields;
-    if (!normalized.type) normalized.type = "SINGLE_CONNECTION";
-    if (normalized.actionTypeVersion === undefined) normalized.actionTypeVersion = 0;
-    if (normalized.connection && !(normalized.connection as Record<string, unknown>).edgeType) {
-      (normalized.connection as Record<string, unknown>).edgeType = "STANDARD";
-    }
-    return normalized as unknown as WorkflowActionSpec;
-  });
 }
 
 async function executeWorkflow(spec: WorkflowResourceSpec): Promise<ResourceExecutionResult> {
