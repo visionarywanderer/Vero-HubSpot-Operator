@@ -143,8 +143,10 @@ function normalizeTemplateActions(actions: WorkflowActionSpec[]): WorkflowAction
 async function executeWorkflow(spec: WorkflowResourceSpec): Promise<ResourceExecutionResult> {
   const key = `workflow:${spec.name}`;
   try {
+    // Strip template-validator-only fields that HubSpot API doesn't accept
+    const { enrollmentSchedule: _es, ...rest } = spec as unknown as Record<string, unknown>;
     const normalizedSpec = {
-      ...spec,
+      ...rest,
       isEnabled: false,
       actions: normalizeTemplateActions(spec.actions),
       nextAvailableActionId: String(spec.nextAvailableActionId),
