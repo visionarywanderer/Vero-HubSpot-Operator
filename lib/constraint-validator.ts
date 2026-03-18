@@ -151,8 +151,12 @@ export function validateWorkflow(spec: WorkflowResourceSpec): ValidationError[] 
     for (const action of spec.actions) {
       const actionKey = `${key}:action[${action.actionId}]`;
 
-      if (!action.actionTypeId) {
+      const branchTypes = ["STATIC_BRANCH", "LIST_BRANCH", "IF_BRANCH", "UNIFIED_BRANCH"];
+      const isBranch = branchTypes.includes(String(action.actionTypeId)) || branchTypes.includes(String((action as Record<string, unknown>).type));
+      if (!action.actionTypeId && !isBranch) {
         errors.push(err(actionKey, "actionTypeId", "Action is missing actionTypeId"));
+      } else if (isBranch) {
+        // Branch actions don't use standard actionTypeId — skip validation
       } else if (!validActionTypeIds.has(action.actionTypeId)) {
         errors.push(err(actionKey, "actionTypeId", `Unknown actionTypeId "${action.actionTypeId}"`));
       } else {
