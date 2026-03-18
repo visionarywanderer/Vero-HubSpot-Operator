@@ -41,8 +41,7 @@ export interface WorkflowEngine {
 }
 
 export function normalizeWorkflowDefaults(spec: WorkflowSpec): WorkflowSpec {
-  // Only set isEnabled:false — don't add fields HubSpot doesn't require
-  return { ...spec, isEnabled: false };
+  return { ...spec, isEnabled: false, flowType: spec.flowType ?? "WORKFLOW" };
 }
 
 class HubSpotWorkflowEngine implements WorkflowEngine {
