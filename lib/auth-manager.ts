@@ -171,6 +171,7 @@ async function validateAndDetectScopes(token: string): Promise<{ ok: boolean; sc
 
 class SqliteAuthManager implements AuthManager {
   private validatedThisSession = new Set<string>();
+  private refreshPromise: Promise<void> | null = null;
 
   async withPortal<T>(portalId: string, fn: () => Promise<T>): Promise<T> {
     return portalContext.run({ portalId }, fn);
@@ -235,6 +236,14 @@ class SqliteAuthManager implements AuthManager {
   }
 
   private async refreshTokenIfNeeded(portalId?: string): Promise<void> {
+    if (this.refreshPromise) return this.refreshPromise;
+    this.refreshPromise = this._doRefresh(portalId).finally(() => {
+      this.refreshPromise = null;
+    });
+    return this.refreshPromise;
+  }
+
+  private async _doRefresh(portalId?: string): Promise<void> {
     const portal = this.getActivePortal(portalId);
     if (!portal.refreshToken || !portal.expiresAt || Date.now() < portal.expiresAt - 60_000) {
       return;

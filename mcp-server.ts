@@ -142,9 +142,23 @@ async function api<T = unknown>(opts: ApiOptions): Promise<T> {
   return JSON.parse(text) as T;
 }
 
+// ---------------------------------------------------------------------------
+// PII redaction — strip sensitive data before returning to MCP clients
+// ---------------------------------------------------------------------------
+
+function redactPII(text: string): string {
+  return text
+    .replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, "{email}")
+    .replace(/(?:\+?\d{1,3}[-.\s]?)?\(?\d{2,4}\)?[-.\s]?\d{3,4}[-.\s]?\d{3,4}/g, "{phone}")
+    .replace(/"(?:firstname|lastname|first_name|last_name)"\s*:\s*"[^"]*"/gi, (match) => {
+      const key = match.split(":")[0];
+      return `${key}: "{name}"`;
+    });
+}
+
 /** Convenience: return MCP text content from any JSON-serializable value */
 function textResult(data: unknown) {
-  return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
+  return { content: [{ type: "text" as const, text: redactPII(JSON.stringify(data, null, 2)) }] };
 }
 
 // ---------------------------------------------------------------------------

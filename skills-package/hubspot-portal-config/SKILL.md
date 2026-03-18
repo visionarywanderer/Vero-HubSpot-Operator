@@ -8,12 +8,13 @@ description: "Portal-specific configuration for Vero HubSpot Operator. Contains 
 
 MCP Server → Railway App API → HubSpot. Never call HubSpot directly.
 
-## Portal: 45609142
+## Portal Data — ALWAYS Fetch Dynamically
 
-| Person | Owner ID | Role |
-|--------|----------|------|
-| Marcus Torrisi | 551898020 | Blue/Red colour leads |
-| Pietro | 86844231 | Purple/Green colour leads |
+**NEVER hardcode portal IDs, owner IDs, or owner names.** Always fetch at session start:
+
+1. Call `list_portals` → get portal IDs and names
+2. Call `portal_capabilities` with portalId → get available scopes and features
+3. Call `deep_health_check` with portalId → get action type availability
 
 ## Naming Conventions
 
@@ -23,7 +24,7 @@ MCP Server → Railway App API → HubSpot. Never call HubSpot directly.
 
 ## Known Portal Limitations
 
-- `tasks` scope is **not available** via API — cannot use Create Task action (`0-3`) in workflows. Use internal email notification (`0-8`) as alternative.
+- Some portals may lack `tasks` scope — always run `deep_health_check` first. Use internal email notification (`0-8`) as alternative to Create Task (`0-3`).
 - No `delete_workflow` MCP tool — delete workflows manually in HubSpot UI.
 - `Rotate to owner` (`0-11`) and `In-app notification` (`0-9`) cause silent 500 errors — avoid in workflow deployments.
 
