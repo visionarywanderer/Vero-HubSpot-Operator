@@ -116,13 +116,39 @@ async function executePipeline(spec: PipelineResourceSpec): Promise<ResourceExec
   }
 }
 
+function normalizeTemplateActions(actions: WorkflowActionSpec[]): WorkflowActionSpec[] {
+  const reservedKeys = new Set(["actionId", "actionTypeId", "actionTypeVersion", "type", "connection", "fields",
+    "listBranches", "staticBranches", "defaultBranch", "defaultBranchName", "inputValue", "filterListBranches"]);
+  return actions.map((action) => {
+    const isBranch = ["STATIC_BRANCH", "LIST_BRANCH", "IF_BRANCH", "UNIFIED_BRANCH"].includes(String(action.type || ""));
+    if (isBranch) return action;
+    // Move non-reserved keys into fields
+    const fields: Record<string, unknown> = { ...(action.fields as Record<string, unknown> || {}) };
+    const normalized: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(action)) {
+      if (reservedKeys.has(key)) { normalized[key] = value; }
+      else { fields[key] = value; }
+    }
+    normalized.fields = fields;
+    if (!normalized.type) normalized.type = "SINGLE_CONNECTION";
+    if (normalized.actionTypeVersion === undefined) normalized.actionTypeVersion = 0;
+    if (normalized.connection && !(normalized.connection as Record<string, unknown>).edgeType) {
+      (normalized.connection as Record<string, unknown>).edgeType = "STANDARD";
+    }
+    return normalized as unknown as WorkflowActionSpec;
+  });
+}
+
 async function executeWorkflow(spec: WorkflowResourceSpec): Promise<ResourceExecutionResult> {
   const key = `workflow:${spec.name}`;
   try {
-    const result = await workflowEngine.deploy({
+    const normalizedSpec = {
       ...spec,
       isEnabled: false,
-    });
+      actions: normalizeTemplateActions(spec.actions),
+      nextAvailableActionId: String(spec.nextAvailableActionId),
+    };
+    const result = await workflowEngine.deploy(normalizedSpec);
     if (!result.success) {
       return { key, type: "workflow", status: "error", error: result.errors?.join("; ") || "Workflow deploy failed" };
     }
