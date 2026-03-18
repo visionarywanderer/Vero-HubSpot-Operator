@@ -124,10 +124,18 @@ function normalizeTemplateActions(actions: WorkflowActionSpec[]): WorkflowAction
     const branchTypes = ["STATIC_BRANCH", "LIST_BRANCH", "IF_BRANCH", "UNIFIED_BRANCH"];
     const isBranch = branchTypes.includes(String(action.type || "")) || branchTypes.includes(String(action.actionTypeId || ""));
     if (isBranch) {
-      // Normalize: move actionTypeId to type for branches, strip actionTypeId entirely
+      // Normalize: move actionTypeId to type, add edgeType to all connections
       const { actionTypeId: _atid, ...rest } = action as unknown as Record<string, unknown>;
       const branchType = branchTypes.includes(String(_atid)) ? String(_atid) : String(rest.type || _atid);
-      return { ...rest, type: branchType } as unknown as WorkflowActionSpec;
+      const result = { ...rest, type: branchType } as Record<string, unknown>;
+      // Ensure edgeType on defaultBranch and all branch connections
+      const addEdge = (conn: Record<string, unknown> | undefined) => {
+        if (conn && !conn.edgeType) conn.edgeType = "STANDARD";
+      };
+      addEdge(result.defaultBranch as Record<string, unknown> | undefined);
+      const branches = (result.listBranches || result.staticBranches || []) as Array<Record<string, unknown>>;
+      for (const b of branches) addEdge(b.connection as Record<string, unknown> | undefined);
+      return result as unknown as WorkflowActionSpec;
     }
     // Move non-reserved keys into fields
     const fields: Record<string, unknown> = { ...(action.fields as Record<string, unknown> || {}) };
