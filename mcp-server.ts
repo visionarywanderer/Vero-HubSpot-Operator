@@ -350,7 +350,7 @@ server.tool(
     stages: z.array(z.object({
       label: z.string(),
       displayOrder: z.number().optional(),
-      metadata: z.record(z.string()).optional().describe("Stage metadata, e.g. { isClosed: 'true', closedWon: 'true' }"),
+      metadata: z.record(z.string(), z.string()).optional().describe("Stage metadata, e.g. { isClosed: 'true', closedWon: 'true' }"),
     })),
     portalId: z.string().optional(),
   },
@@ -433,7 +433,7 @@ server.tool(
   "Create a new CRM record",
   {
     objectType: z.string(),
-    properties: z.record(z.string()).describe("Property name-value pairs"),
+    properties: z.record(z.string(), z.string()).describe("Property name-value pairs"),
     portalId: z.string().optional(),
   },
   async ({ objectType, properties, portalId }) => {
@@ -452,7 +452,7 @@ server.tool(
   {
     objectType: z.string(),
     id: z.string(),
-    properties: z.record(z.string()).describe("Property name-value pairs to update"),
+    properties: z.record(z.string(), z.string()).describe("Property name-value pairs to update"),
     portalId: z.string().optional(),
   },
   async ({ objectType, id, properties, portalId }) => {
@@ -470,7 +470,7 @@ server.tool(
   "Create or update records in batch (up to 100 per call). Uses email as dedup key for contacts.",
   {
     objectType: z.string(),
-    records: z.array(z.record(z.string())).describe("Array of property objects"),
+    records: z.array(z.record(z.string(), z.string())).describe("Array of property objects"),
     idProperty: z.string().optional().describe("Property to use for dedup (e.g. 'email' for contacts)"),
     portalId: z.string().optional(),
   },
@@ -508,7 +508,7 @@ server.tool(
     name: z.string(),
     objectTypeId: z.string().optional().describe("Default: 0-1 (contacts)"),
     processingType: z.enum(["DYNAMIC", "MANUAL"]).optional(),
-    filterBranch: z.record(z.unknown()).optional().describe("Filter definition for dynamic lists"),
+    filterBranch: z.record(z.string(), z.unknown()).optional().describe("Filter definition for dynamic lists"),
     portalId: z.string().optional(),
   },
   async ({ name, objectTypeId, processingType, filterBranch, portalId }) => {
@@ -542,7 +542,7 @@ server.tool(
   "save_workflow_draft",
   "Save a workflow spec as a local draft (does NOT deploy to HubSpot). Checks for duplicate workflows in portal and existing drafts. Deploy it later from the app UI or via deploy_workflow.",
   {
-    workflow: z.record(z.unknown()).describe("Full workflow definition matching HubSpot v4 format"),
+    workflow: z.record(z.string(), z.unknown()).describe("Full workflow definition matching HubSpot v4 format"),
     portalId: z.string().optional(),
   },
   async ({ workflow, portalId }) => {
@@ -560,7 +560,7 @@ server.tool(
   "deploy_workflow",
   "Deploy a new workflow (always created disabled for safety). Use the v4 action format.",
   {
-    workflow: z.record(z.unknown()).describe("Full workflow definition matching HubSpot v4 format"),
+    workflow: z.record(z.string(), z.unknown()).describe("Full workflow definition matching HubSpot v4 format"),
     portalId: z.string().optional(),
   },
   async ({ workflow, portalId }) => {
@@ -581,7 +581,7 @@ server.tool(
   "save_pipeline_draft",
   "Save a pipeline spec as a local draft (does NOT deploy to HubSpot). Checks for duplicate pipelines in portal and existing drafts.",
   {
-    spec: z.record(z.unknown()).describe("Pipeline definition with label, stages, objectType"),
+    spec: z.record(z.string(), z.unknown()).describe("Pipeline definition with label, stages, objectType"),
     name: z.string().optional(),
     portalId: z.string().optional(),
   },
@@ -600,7 +600,7 @@ server.tool(
   "save_property_draft",
   "Save a property spec as a local draft (does NOT create in HubSpot). Checks for duplicate properties in portal and existing drafts.",
   {
-    spec: z.record(z.unknown()).describe("Property definition with name, label, type, fieldType, objectType"),
+    spec: z.record(z.string(), z.unknown()).describe("Property definition with name, label, type, fieldType, objectType"),
     name: z.string().optional(),
     portalId: z.string().optional(),
   },
@@ -619,7 +619,7 @@ server.tool(
   "save_list_draft",
   "Save a list/segment spec as a local draft (does NOT create in HubSpot). Checks for duplicate lists in portal and existing drafts.",
   {
-    spec: z.record(z.unknown()).describe("List definition with name, objectTypeId, processingType, optional filterBranch"),
+    spec: z.record(z.string(), z.unknown()).describe("List definition with name, objectTypeId, processingType, optional filterBranch"),
     name: z.string().optional(),
     portalId: z.string().optional(),
   },
@@ -638,7 +638,7 @@ server.tool(
   "save_template_draft",
   "Save a template/config spec as a local draft (does NOT install to HubSpot). Checks for duplicate drafts.",
   {
-    spec: z.record(z.unknown()).describe("Template definition with resources (propertyGroups, properties, pipelines, workflows, lists, customObjects, associations)"),
+    spec: z.record(z.string(), z.unknown()).describe("Template definition with resources (propertyGroups, properties, pipelines, workflows, lists, customObjects, associations)"),
     name: z.string().optional(),
     portalId: z.string().optional(),
   },
@@ -657,7 +657,7 @@ server.tool(
   "save_custom_object_draft",
   "Save a custom object spec as a local draft (does NOT create in HubSpot). Checks for duplicate drafts.",
   {
-    spec: z.record(z.unknown()).describe("Custom object definition with name, labels, properties, primaryDisplayProperty"),
+    spec: z.record(z.string(), z.unknown()).describe("Custom object definition with name, labels, properties, primaryDisplayProperty"),
     name: z.string().optional(),
     portalId: z.string().optional(),
   },
@@ -680,7 +680,7 @@ server.tool(
   "validate_config",
   "Validate a Config Engine template payload without executing it",
   {
-    resources: z.record(z.unknown()).describe("TemplateResources object with propertyGroups, properties, pipelines, workflows, lists, customObjects, associations"),
+    resources: z.record(z.string(), z.unknown()).describe("TemplateResources object with propertyGroups, properties, pipelines, workflows, lists, customObjects, associations"),
   },
   async ({ resources }) => {
     const data = await api({
@@ -696,7 +696,7 @@ server.tool(
   "execute_config",
   "Execute a Config Engine template — creates all resources (properties, pipelines, workflows, lists) in dependency order",
   {
-    resources: z.record(z.unknown()).describe("TemplateResources object"),
+    resources: z.record(z.string(), z.unknown()).describe("TemplateResources object"),
     dryRun: z.boolean().optional().describe("If true, validates and resolves dependencies without creating anything"),
     portalId: z.string().optional(),
   },
