@@ -6,7 +6,7 @@ Discovered through trial-and-error. HubSpot v4 API returns generic errors withou
 
 | Action | actionTypeId | Issue | Workaround |
 |--------|-------------|-------|------------|
-| Create task | `0-3` | Requires `tasks` scope not available on portal 45609142 | Use internal notification `0-8` |
+| Create task | `0-3` | Requires `tasks` scope — check portal scopes via `deep_health_check` first | Use internal notification `0-8` |
 | In-app notification | `0-9` | Returns 500 | Use internal email notification `0-8` |
 | Rotate to owner | `0-11` | Returns 500 with placeholder fields | Use Set Property `0-5` with `hubspot_owner_id` |
 
@@ -72,14 +72,12 @@ Use Set Property (`0-5`) to assign owner:
   "actionTypeId": "0-5",
   "fields": {
     "property_name": "hubspot_owner_id",
-    "value": { "staticValue": "551898020", "type": "STATIC_VALUE" }
+    "value": { "staticValue": "{owner_id}", "type": "STATIC_VALUE" }
   }
 }
 ```
 
-Owner IDs for portal 45609142:
-- Marcus Torrisi: `551898020`
-- Pietro: `86844231`
+Owner IDs: Fetch dynamically via `list_portals` → `portal_capabilities`. Never hardcode.
 
 ## Internal Email Notification Pattern
 
@@ -90,7 +88,7 @@ Owner IDs for portal 45609142:
   "actionTypeVersion": 0,
   "actionTypeId": "0-8",
   "fields": {
-    "user_ids": ["551898020"],
+    "user_ids": ["{owner_id}"],
     "subject": "New Lead: {{ enrolled_object.firstname }} {{ enrolled_object.lastname }}",
     "body": "<ul><li>Email: {{ enrolled_object.email }}</li><li>Phone: {{ enrolled_object.phone }}</li></ul>"
   }

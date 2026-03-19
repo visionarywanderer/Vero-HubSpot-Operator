@@ -101,12 +101,15 @@ All changes are logged with `initiatedBy: "VeroDigital"` for audit trail.
 ### 5. Batch Over Individual
 If operating on more than 3 records, use `batch_upsert_records` instead of individual `create_record`/`update_record` calls.
 
+### 6. Data Privacy
+Never store portal IDs, owner IDs, owner names, or any client PII in skills, memories, or CLAUDE.md. All examples in this connector use `{portal_id}` and `{owner_id}` as placeholders. When adding new patterns, always sanitize real data before persisting.
+
 ## Workflow Creation Rules (CRITICAL)
 
 When creating workflows via `deploy_workflow`, follow these rules exactly:
 
-### LIST_BRANCH (If/Then) Restrictions
-- **Single-branch only** — never put 2+ branches in one LIST_BRANCH action. Chain single-branch LIST_BRANCH actions sequentially instead.
+### LIST_BRANCH (If/Then) Rules
+- **Multiple branches supported** — a single LIST_BRANCH action can contain multiple `listBranches` entries (tested and confirmed working).
 - **No Create task (`0-3`)** inside LIST_BRANCH — use notification (`0-8`) or set property (`0-5`) instead.
 - **Always include `includeObjectsWithNoValueSet: false`** in filter operations.
 
@@ -235,6 +238,20 @@ search_records with objectType: "contacts", filters: [
 - **401 Unauthorized** — portal token may be expired; check `portal_capabilities`
 - **409 Conflict** — resource already exists; use update instead of create
 - **422 Validation Error** — check field names, types, and required parameters
+
+## Self-Updating Action Patterns
+
+This connector's Workflow Creation Rules section is a living document. When new action field formats, value types, or enrollment patterns are discovered during workflow deployment:
+
+1. The discovering skill (usually `hubspot-workflow-drafts`) flags which format was missing
+2. Update the relevant section of this connector with the new pattern
+3. Include a dated comment noting when and why the pattern was added
+
+**When to update this file:**
+- A new action type is used successfully for the first time
+- An existing action type requires a field format not currently documented
+- A new enrollment criteria pattern is confirmed working
+- A workaround is found for a documented limitation
 
 ## Object Type IDs
 
