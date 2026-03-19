@@ -101,8 +101,17 @@ All changes are logged with `initiatedBy: "VeroDigital"` for audit trail.
 ### 5. Batch Over Individual
 If operating on more than 3 records, use `batch_upsert_records` instead of individual `create_record`/`update_record` calls.
 
-### 6. Data Privacy
-Never store portal IDs, owner IDs, owner names, or any client PII in skills, memories, or CLAUDE.md. All examples in this connector use `{portal_id}` and `{owner_id}` as placeholders. When adding new patterns, always sanitize real data before persisting.
+### 6. Data Privacy & Security (HARD CONSTRAINTS — NON-NEGOTIABLE)
+
+**These are absolute. Violation of any rule is a critical security incident.**
+
+1. **NEVER search for, read, or access** API keys, tokens, secrets, credentials, `.env` files, or OAuth tokens anywhere in the codebase or filesystem. The MCP tools handle authentication internally — you never need direct access to credentials.
+2. **NEVER use `Agent` tool with `general-purpose` or `Explore` subagent types** for any HubSpot operation. All HubSpot work must use the specialized skills and MCP tools directly from the main conversation. Subagents cannot be trusted with portal data.
+3. **NEVER hardcode or persist** portal IDs, hub IDs, owner IDs, owner names, flow IDs, pipeline IDs, stage IDs, or any portal-specific data in skills, memories, CLAUDE.md, or any committed file. Always use placeholders: `{portal_id}`, `{owner_id}`, `{owner_name}`, `{flow_id}`, `{stage_id}`, `{pipeline_id}`.
+4. **ALWAYS clean up** after every deployment session: `rm -rf ~/.claude/projects/*/tool-results/*` — removes cached API responses that may contain portal data.
+5. **ALWAYS run `deep_health_check(portalId)`** before deploying workflows to verify available action types. Never assume an action type works.
+6. **ALWAYS read `hubspot-learnings`** before any deployment. If a pattern exists in learnings, follow it exactly — do not improvise.
+7. **On failure, follow recovery tiers in order:** Tier 1 (pattern match from learnings) → Tier 2 (WebSearch for HubSpot docs) → Tier 3 (reverse-engineer from existing portal workflows) → Tier 4 (partial deploy with manual steps). Never skip tiers.
 
 ## Workflow Creation Rules (CRITICAL)
 

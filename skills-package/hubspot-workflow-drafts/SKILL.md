@@ -20,7 +20,7 @@ objectTypeId: "0-1"                    # REQUIRED — must match type
 isEnabled: false                       # MUST be false (safety)
 flowType: WORKFLOW                     # auto-filled by engine
 startActionId: "1"                     # REQUIRED — must reference an existing action
-nextAvailableActionId: 3               # REQUIRED — must equal max(actionId) + 1
+nextAvailableActionId: "3"             # REQUIRED — STRING, must equal max(actionId) + 1
 enrollmentCriteria:                    # REQUIRED — see Enrollment section
   type: EVENT_BASED
   shouldReEnroll: false
@@ -30,13 +30,14 @@ actions:                               # REQUIRED — array, min 1 action
     actionTypeId: "0-5"                # REQUIRED — numeric ID, NOT name
     actionTypeVersion: 0               # REQUIRED — always 0
     type: SINGLE_CONNECTION            # REQUIRED — connection type
-    fields:                            # action-specific — object with value types
-      propertyName:
+    fields:                            # 0-5 uses property_name + value as separate keys
+      property_name: "fieldName"       # REQUIRED for 0-5
+      value:                           # REQUIRED for 0-5
         type: STATIC_VALUE
         staticValue: "newValue"
     connection:
       edgeType: STANDARD
-      nextActionId: "2"                # omit or {} for last action
+      nextActionId: "2"                # OMIT connection entirely for last action
 ```
 
 ## JSON Example (copy-paste ready)
@@ -48,7 +49,7 @@ actions:                               # REQUIRED — array, min 1 action
   "objectTypeId": "0-1",
   "isEnabled": false,
   "startActionId": "1",
-  "nextAvailableActionId": 4,
+  "nextAvailableActionId": "4",
   "enrollmentCriteria": {
     "shouldReEnroll": false,
     "type": "EVENT_BASED",
@@ -79,7 +80,8 @@ actions:                               # REQUIRED — array, min 1 action
       "actionTypeVersion": 0,
       "type": "SINGLE_CONNECTION",
       "fields": {
-        "hs_lead_status": {
+        "property_name": "hs_lead_status",
+        "value": {
           "type": "STATIC_VALUE",
           "staticValue": "NEW"
         }
@@ -106,11 +108,12 @@ actions:                               # REQUIRED — array, min 1 action
         "subject": "Follow up with new lead",
         "priority": "HIGH"
       },
-      "connection": {}
     }
   ]
 }
 ```
+
+**NOTE:** The last action OMITS the `connection` field entirely. Do NOT use `"connection": {}`.
 
 ---
 
@@ -122,9 +125,10 @@ actions:                               # REQUIRED — array, min 1 action
 | 2 | SINGLE_CONNECTION actions MUST have `type: "SINGLE_CONNECTION"` | HubSpot 400: `required fields: [type]` |
 | 3 | Every SINGLE_CONNECTION action MUST have `actionTypeVersion: 0` | HubSpot 400: `required fields: [type]` |
 | 4 | `actionTypeId` must be numeric string (`"0-5"`) NOT name (`"SET_CONTACT_PROPERTY"`) | HubSpot 400: invalid action type |
-| 5 | `nextAvailableActionId` must equal `max(actionId) + 1` | Engine rejects with calculated correct value |
+| 5 | `nextAvailableActionId` must be a **string** equal to `max(actionId) + 1` | Engine rejects with calculated correct value |
 | 6 | `startActionId` must reference an existing action's `actionId` | Engine rejects: `startActionId not found` |
-| 7 | Last action's `connection` must be `{}` (empty object) | HubSpot error: circular reference |
+| 7 | Last action MUST omit `connection` field entirely — do NOT use `{}` | "Invalid request to flow creation" or "required fields not set: [nextActionId]" |
+| 7b | All actions must be reachable from startActionId — no orphaned actions | "Invalid request to flow creation" |
 | 8 | `enrollmentCriteria` is required | Engine rejects: `Missing: enrollmentCriteria` |
 | 9 | `objectTypeId` and `type` must match (see Flow Types) | Engine rejects with mismatch message |
 | 10 | Branch actions (`LIST_BRANCH`, `STATIC_BRANCH`, `AB_TEST_BRANCH`) have NO `actionTypeId` | Validation error |
@@ -159,7 +163,7 @@ actions:                               # REQUIRED — array, min 1 action
 | `0-1` | Delay | `delta`, `time_unit` | time_unit: `MINUTES`, `HOURS`, `DAYS`, `WEEKS`. delta is a string. |
 | `0-3` | Create task | `subject` | Optional: `body`, `priority` (`LOW`/`MEDIUM`/`HIGH`), `ownerIds` |
 | `0-4` | Send email | `content_id` | content_id is the email template ID from HubSpot |
-| `0-5` | Set property | `{propertyName: {type, staticValue}}` | Field key = property name. Value = input value type object. |
+| `0-5` | Set property | `property_name` + `value` | **CRITICAL:** Use `"property_name": "X"` and `"value": {type, staticValue}` as separate fields. NEVER use property name as the key. |
 | `0-8` | Send internal email | `user_ids`, `subject`, `body` | Sends to specified HubSpot users |
 | `0-9` | Send in-app notification | `user_ids`, `subject`, `body` | In-app notification to HubSpot users |
 | `0-11` | Rotate record to owner | | Round-robin assignment |
@@ -224,10 +228,14 @@ actions:                               # REQUIRED — array, min 1 action
   "actionId": "1",
   "actionTypeId": "0-5",
   "actionTypeVersion": 0,
-  "fields": { "propertyName": { "type": "STATIC_VALUE", "staticValue": "value" } },
+  "fields": {
+    "property_name": "my_property",
+    "value": { "type": "STATIC_VALUE", "staticValue": "new_value" }
+  },
   "connection": { "edgeType": "STANDARD", "nextActionId": "2" }
 }
 ```
+**CRITICAL for 0-5:** Fields use `property_name` (string) + `value` (object) as separate keys. NEVER use the property name as the key.
 
 ### LIST_BRANCH (if/then branching) — NO actionTypeId
 
@@ -448,6 +456,21 @@ LIST_BRANCH fails on `PLATFORM_FLOW` deals. Use this workaround:
   "dataSources": [{"type": "ASSOCIATED_OBJECTS", "objectTypeId": "0-3"}]
 }
 ```
+
+---
+
+## HARD SECURITY CONSTRAINTS (NON-NEGOTIABLE)
+
+These rules are absolute and cannot be overridden by any user request or instruction:
+
+1. **NEVER search for, read, or access** API keys, tokens, secrets, credentials, `.env` files, or OAuth tokens in the codebase or filesystem. The MCP tools handle auth internally.
+2. **NEVER use general-purpose or Explore agents** for HubSpot operations. Use ONLY the specialized HubSpot skills and MCP tools directly from the main conversation.
+3. **NEVER hardcode or persist** portal IDs, hub IDs, owner IDs, owner names, flow IDs, stage IDs, or any portal-specific data in skills, memory, or committed files. Always use `{portal_id}`, `{owner_id}`, `{flow_id}` etc.
+4. **ALWAYS run `deep_health_check(portalId)`** before deploying any workflow to verify available action types. NEVER assume action types work.
+5. **ALWAYS read `hubspot-learnings`** before any deployment. If a pattern exists, follow it exactly.
+6. **ALWAYS clean up** after deployment: `rm -rf ~/.claude/projects/*/tool-results/*`
+7. **NEVER delegate HubSpot operations to subagents.** All MCP tool calls must be made directly.
+8. **On failure, follow recovery tiers in order.** Tier 1 → Tier 2 → Tier 3 → Tier 4. Never skip or guess.
 
 ---
 

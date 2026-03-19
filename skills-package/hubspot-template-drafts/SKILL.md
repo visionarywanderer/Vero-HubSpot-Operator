@@ -112,7 +112,7 @@ resources:                                 # at least one resource array must be
         "objectTypeId": "0-1",
         "isEnabled": false,
         "startActionId": "1",
-        "nextAvailableActionId": 3,
+        "nextAvailableActionId": "3",
         "enrollmentCriteria": {
           "shouldReEnroll": false,
           "type": "EVENT_BASED",
@@ -141,21 +141,21 @@ resources:                                 # at least one resource array must be
             "actionTypeId": "0-5",
             "actionTypeVersion": 0,
             "type": "SINGLE_CONNECTION",
-            "fields": [
-              { "name": "property", "value": "lifecyclestage" },
-              { "name": "newValue", "value": "opportunity" }
-            ],
-            "connection": { "nextActionId": "2" }
+            "fields": {
+              "property_name": "lifecyclestage",
+              "value": { "type": "STATIC_VALUE", "staticValue": "opportunity" }
+            },
+            "connection": { "edgeType": "STANDARD", "nextActionId": "2" }
           },
           {
             "actionId": "2",
-            "actionTypeId": "0-7",
+            "actionTypeId": "0-8",
             "actionTypeVersion": 0,
             "type": "SINGLE_CONNECTION",
-            "fields": [
-              { "name": "subject", "value": "New trial started — follow up" }
-            ],
-            "connection": {}
+            "fields": {
+              "subject": "New trial started — follow up",
+              "body": "<p>A new trial has started. Please follow up.</p>"
+            }
           }
         ]
       }
