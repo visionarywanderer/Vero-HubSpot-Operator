@@ -622,6 +622,29 @@ server.tool(
   }
 );
 
+server.tool(
+  "get_workflow",
+  [
+    "Get the full spec of an existing workflow by its flow ID.",
+    "Use this to reverse-engineer working workflow patterns when building new workflows.",
+    "Returns the complete v4 workflow spec including enrollment criteria, actions, and branching.",
+    "Useful for: finding correct field formats, understanding enrollment patterns,",
+    "copying action structures from working workflows to fix deployment failures.",
+  ].join("\n"),
+  {
+    flowId: z.string().describe("The workflow flow ID to retrieve"),
+    portalId: z.string().optional().describe("Portal ID. Omit to use the active portal set via set_active_portal."),
+  },
+  async ({ flowId, portalId }) => {
+    const data = await api({
+      method: "GET",
+      path: `/api/workflows/${flowId}`,
+      query: portalId ? { portalId } : undefined,
+    });
+    return textResult(data);
+  }
+);
+
 // ---------------------------------------------------------------------------
 // Draft Tools — save specs to the server, deploy later from app UI
 // ---------------------------------------------------------------------------

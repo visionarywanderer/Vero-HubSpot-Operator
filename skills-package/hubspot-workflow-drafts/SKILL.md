@@ -453,19 +453,37 @@ LIST_BRANCH fails on `PLATFORM_FLOW` deals. Use this workaround:
 
 ## Procedure
 
+### Phase 1: Preparation
 1. **⚡ FIRST: Read `hubspot-learnings` skill** — cross-check your planned spec against ALL known patterns and failures. Do NOT skip this step. If learnings mentions a workaround for what you're building, USE IT.
-2. **Portal check**: Call `list_portals` to identify connected portals. If multiple portals exist, ask the user which one to target. Pass `portalId` to every subsequent MCP tool call.
-3. Ask the user what the workflow should do if not clear
-4. **Duplicate check**: Call `list_workflows` MCP tool (with `portalId`) to see existing workflows in the portal. Compare the planned workflow name against existing ones.
-5. **Property check**: Call `list_properties` MCP tool for the target object type to verify that any properties referenced in set-property actions or enrollment filters actually exist. If they don't, flag them and offer to create property drafts first.
-6. Determine: object type → flow type, trigger → enrollment criteria, actions → action chain
-7. Build the spec following the JSON format above EXACTLY
-8. **Pre-flight check**: Verify ALL rules from the checklist AND cross-check against `hubspot-learnings` quick reference
-9. Call `deploy_workflow` MCP tool with the spec (or `save_workflow_draft` if user prefers draft-only)
-10. **If deploy succeeds** → go to step 14
-11. **If fails → Step A (Doc Check)**: Read the error message. Identify the specific field, action type, or format that failed. Use WebSearch to find the HubSpot v4 API docs for that exact field/action (query: `HubSpot automation v4 API {action_type} {field_name} format site:developers.hubspot.com`). Use WebFetch on the top result to extract the correct JSON format. Apply the fix and retry.
-12. **If still fails → Step B (Portal Reverse-Engineering)**: Call `list_workflows` MCP tool on the SAME portal. Find an existing workflow that uses a similar action type or enrollment pattern. Fetch its full spec to see the correct field format, value types, and structure. Copy the working pattern, adapt it, and retry.
-13. **If still fails after A and B**: Present the errors to the user, explain what was tried, and ask for guidance. Suggest creating the workflow manually in HubSpot UI then fetching its spec as a reference.
-14. **On success — Update learnings**: Append the new working pattern (or failure-then-fix sequence) to `hubspot-learnings`. Include the exact JSON that worked. Update `hubspot-connector` SKILL.md if the discovery reveals a new action field format not documented there.
-15. **On success — Offer auto-update**: Ask: "I've updated the learnings with this new pattern. Want me to commit, push, and deploy so the skills stay in sync?" If yes: create branch → commit → push → PR → wait for CI → merge.
-16. Tell the user the workflow has been created (disabled) and to enable it in HubSpot after review. State: "No portal-specific data has been persisted to skills or memory."
+2. **Read `docs/workflow-pattern-catalog.md`** — find the matching pattern for the enrollment type, action types, and branching needed. Use the exact JSON structures from the catalog as your starting point.
+3. **Portal check**: Call `list_portals` to identify connected portals. Pass `portalId` to every subsequent MCP tool call.
+4. Ask the user what the workflow should do if not clear.
+5. **Duplicate check**: Call `list_workflows` MCP tool to see existing workflows.
+6. **Property check**: Call `list_properties` MCP tool for the target object type to verify referenced properties exist.
+7. Determine: object type → flow type, trigger → enrollment criteria, actions → action chain.
+8. Build the spec using patterns from the catalog EXACTLY. Match enrollment type (1A-1G), action types (3A-3L), and branching (4A-4E).
+9. **Pre-flight check**: Verify ALL rules from `hubspot-learnings` quick reference (26 rules).
+
+### Phase 2: Deploy (4-Tier Failure Recovery)
+
+**Tier 1 — Pattern Match (first attempt)**
+10. Call `deploy_workflow` MCP tool with the spec built from known patterns.
+11. If deploy succeeds → go to step 18.
+
+**Tier 2 — Doc Check (on first failure)**
+12. Read the error message. Identify the specific field, action type, or format that failed.
+13. Use WebSearch to find the HubSpot v4 API docs for that exact field/action (query: `HubSpot automation v4 API {action_type} {field_name} format site:developers.hubspot.com`). Use WebFetch on the top result to extract the correct JSON format.
+14. Apply the fix and retry deployment. If succeeds → go to step 18.
+
+**Tier 3 — Portal Reverse-Engineering (on second failure)**
+15. Call `list_workflows` MCP tool on the SAME portal. Find an existing workflow that uses a similar action type or enrollment pattern.
+16. Call `get_workflow` MCP tool with that workflow's flowId to fetch its full spec. Copy the working pattern, adapt it to the current workflow, and retry. If succeeds → go to step 18.
+
+**Tier 4 — Partial Deploy (last resort)**
+17. If still failing, use `deploy_workflow` with `allowPartial: true`. The engine will strip failing actions and deploy what works. Present the `manualSteps` to the user — these are the exact steps they need to complete manually in HubSpot UI. The partial install already logs failures to `hubspot-learnings` automatically.
+
+### Phase 3: Post-Deploy
+18. **Update learnings**: Append the new working pattern (or failure-then-fix sequence) to `hubspot-learnings`. Include exact JSON. Update `hubspot-connector` if a new format was discovered. **Sanitize** all portal IDs, owner IDs, and names with placeholders before saving.
+19. **Offer auto-update**: Ask: "I've updated the learnings. Want me to commit, push, and deploy?" If yes: branch → commit → push → PR → CI → merge.
+20. Tell the user the workflow has been created (disabled) and to enable it in HubSpot after review.
+21. State: "No portal-specific data has been persisted to skills or memory."

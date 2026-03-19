@@ -14,8 +14,15 @@ export async function GET(req: Request, context: any) {
   const portalId = portalFromUrl(req);
   if (!portalId) return NextResponse.json({ ok: false, error: "portalId is required" }, { status: 400 });
 
-  const spec = await authManager.withPortal(portalId, async () => workflowEngine.get(params.flowId));
-  return NextResponse.json({ ok: true, spec });
+  try {
+    const spec = await authManager.withPortal(portalId, async () => workflowEngine.get(params.flowId));
+    return NextResponse.json({ ok: true, spec });
+  } catch (error) {
+    return NextResponse.json(
+      { ok: false, error: error instanceof Error ? error.message : "Failed to fetch workflow" },
+      { status: 500 }
+    );
+  }
 }
 
 export async function PUT(req: Request, context: any) {
