@@ -24,6 +24,35 @@ This is the central coordinator for the Vero HubSpot Operator skill system. It r
 
 ---
 
+## Data Privacy Rules
+
+**Portal data MUST NOT persist in Claude's context between sessions.** The app (Railway middleware) is the authorized store for portal data. Claude's skills, memories, and CLAUDE.md are NOT authorized stores.
+
+### What MUST NOT be stored in skills, memories, or CLAUDE.md:
+- Portal IDs (Hub IDs like `12345678`)
+- Owner IDs (numeric HubSpot user IDs)
+- Owner names or any person names associated with portals
+- Contact names, email addresses, phone numbers, or any PII from portal records
+- API keys, OAuth tokens, or any credentials
+- Company names associated with specific portal configurations
+
+### What CAN be stored:
+- Generic API patterns with placeholder values (`{portal_id}`, `{owner_id}`)
+- Error patterns and fixes with sanitized examples
+- Structural rules (field formats, type mappings, filter hierarchies)
+- Action type references and their required fields
+
+### Rules for learnings entries:
+- Use `{portal_id}`, `{owner_id}`, `{owner_name}` as placeholders — never real values
+- Describe portals generically: "a portal", "the target portal" — never by Hub ID
+- JSON examples must use placeholder values, not real data
+
+### After completing work on a portal:
+- State: "No portal-specific data has been persisted to skills or memory."
+- If a learnings entry was added, verify it uses placeholders before saving
+
+---
+
 ## Skill Catalog
 
 | Skill | File | Trigger Phrases | MCP Tool |

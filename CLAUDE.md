@@ -6,7 +6,8 @@
 
 1. **Read `hubspot-learnings` skill** — the self-improving knowledge base with all known API patterns and failures. Cross-check against this before ANY deploy/create operation.
 2. **Read `hubspot-portal-config` skill** — owner IDs, naming conventions, portal limitations.
-3. **Route the request** using the skill map below.
+3. **Verify data privacy** — if any learnings or skills reference specific portal IDs or owner names, flag them for sanitization.
+4. **Route the request** using the skill map below.
 
 ## How to Route Requests
 
@@ -71,6 +72,8 @@ MCP Server → Railway App API → HubSpot. Never call HubSpot directly.
 3. Call `deep_health_check` with portalId → get action type availability, broken actions, missing scopes
 
 Owner IDs, portal limitations, and scope availability change over time. The app is the source of truth — not these files.
+
+**Privacy rule:** Never persist portal IDs, owner IDs, owner names, or any client data in CLAUDE.md, skills files, or memory files. Use `{portal_id}` and `{owner_id}` placeholders in all documentation examples. After completing work on a portal, state: "No portal-specific data has been persisted."
 
 ## Naming Conventions
 

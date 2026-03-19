@@ -20,9 +20,12 @@ description: "Self-improving knowledge base for HubSpot API patterns. MUST READ 
 **Fix:** What actually works (include code/JSON if helpful)
 **Pattern:** One-line reusable rule for future reference
 ```
-2. **Update the Quick Reference** if this is a critical rule that prevents common failures
-3. **Copy this file** to `skills-package/hubspot-learnings/SKILL.md` to keep the shareable package in sync
-4. **Offer to commit and deploy**: After appending, ask the user:
+2. **If the failure was due to an unknown API format — Doc Check**: Before just retrying, use WebSearch to find the official HubSpot v4 API docs for the specific action/field that failed. Use WebFetch on the most relevant result to extract the correct format. If no docs help, use `list_workflows` to find an existing workflow on the same portal that uses the problematic action type and reverse-engineer the correct format. Include the source of the fix in the learnings entry.
+3. **Update the Quick Reference** if this is a critical rule that prevents common failures
+4. **Update `hubspot-connector` SKILL.md** if the discovery reveals action field formats not already documented
+5. **Sanitize before saving** — replace any real portal IDs, owner IDs, or names with `{portal_id}`, `{owner_id}`, `{owner_name}` placeholders
+6. **Copy this file** to `skills-package/hubspot-learnings/SKILL.md` to keep the shareable package in sync
+7. **Offer to commit and deploy**: After appending, ask the user:
    "I've added a new learning. Want me to commit this to git, push, and deploy? This will update the app and skills-package for everyone."
    If they say yes, execute: create branch → commit → push → PR → wait for CI → merge → confirm deploy.
 
@@ -60,6 +63,9 @@ These 15 rules prevent 90% of failures. Check every one before deploying.
 | 13 | Wrap filters in OR → AND → filters hierarchy, even for single conditions | WORKFLOW |
 | 14 | `isEnabled` MUST be `false` on all deployed workflows | WORKFLOW |
 | 15 | 3-second delay between workflow creations to avoid rate limits | WORKFLOW |
+| 16 | Every level needs `type` field: enrollment=`LIST_BASED`, branches=`OR`/`AND`, filters=`PROPERTY`, operations=match `operationType`, actions=`SINGLE_CONNECTION` | WORKFLOW |
+| 17 | Actions need `actionTypeVersion: 0` and `connection: {edgeType: "STANDARD", nextActionId: "X"}` for chaining | WORKFLOW |
+| 18 | Date "set to today" → use `OBJECT_PROPERTY` with `hs_lastmodifieddate`. Static dates → epoch ms string in `STATIC_VALUE` | WORKFLOW |
 
 ---
 
@@ -236,5 +242,86 @@ Owner IDs: Fetch dynamically via `list_portals` → `portal_capabilities`
 ---
 
 ### 2026-03-18 — WORKFLOW — ✅ Colour-based lead routing with notifications (CONFIRMED WORKING)
-**What:** Full workflow: enrollment on `favourite_colour` IS_KNOWN → LIST_BRANCH with 4 branches (Blue/Red → Marcus, Purple/Green → Pietro) → Set owner via 0-5 → Internal email notification via 0-8 with contact tokens
+**What:** Full workflow: enrollment on `favourite_colour` IS_KNOWN → LIST_BRANCH with 4 branches (Blue/Red → {owner_a}, Purple/Green → {owner_b}) → Set owner via 0-5 → Internal email notification via 0-8 with contact tokens
 **Pattern:** Complete lead routing pattern: IS_KNOWN enrollment → multi-branch LIST_BRANCH → Set Property owner → Internal email with {{ enrolled_object.X }} tokens
+
+---
+
+### 2026-03-19 — WORKFLOW — v4 API requires `type` field on filters, branches, actions, and enrollment
+**Trigger:** Deploying deal-based workflow on a portal failed repeatedly with "required fields not set: [type]"
+**Failed because:** The v4 API requires a `type` field at EVERY level of the workflow spec:
+- `enrollmentCriteria.type` → must be `"LIST_BASED"`, `"EVENT_BASED"`, or `"MANUAL"`
+- `listFilterBranch.type` → must match `filterBranchType` (e.g., `"OR"`)
+- Each `filterBranch.type` → must match its `filterBranchType` (e.g., `"AND"`)
+- Each `filter.type` → must be `"PROPERTY"` (AND keep `filterType: "PROPERTY"`)
+- Each `operation.type` → must match `operationType` (e.g., `"ENUMERATION"`)
+- Each `action.type` → must be `"SINGLE_CONNECTION"` for simple actions (0-5, 0-8), or `"LIST_BRANCH"`, `"STATIC_BRANCH"` etc for branching
+**Fix:** Add `type` field at every level. Complete working pattern:
+```json
+{
+  "enrollmentCriteria": {
+    "type": "LIST_BASED",
+    "listFilterBranch": {
+      "type": "OR", "filterBranchType": "OR",
+      "filterBranches": [{
+        "type": "AND", "filterBranchType": "AND",
+        "filters": [{
+          "type": "PROPERTY", "filterType": "PROPERTY",
+          "property": "prop_name",
+          "operation": { "type": "ENUMERATION", "operator": "IS_ANY_OF", "operationType": "ENUMERATION", "values": ["true"] }
+        }]
+      }]
+    }
+  },
+  "actions": [{ "type": "SINGLE_CONNECTION", "actionTypeId": "0-5", ... }]
+}
+```
+**Pattern:** v4 API needs `type` at EVERY level — enrollment, branches, filters, operations, AND actions. Always include both `type` and the legacy field (`filterBranchType`, `filterType`, `operationType`).
+
+---
+
+### 2026-03-19 — WORKFLOW — Actions need `actionTypeVersion: 0` and `connection` object
+**Trigger:** Deploying workflow with chained actions on Hub 2 failed with "Invalid request to flow creation"
+**Failed because:** Actions used `nextActionId` at the top level instead of the `connection` object
+**Fix:** Each action needs:
+- `"actionTypeVersion": 0` — required field
+- `"connection": { "edgeType": "STANDARD", "nextActionId": "X" }` — instead of top-level `nextActionId`
+```json
+{
+  "type": "SINGLE_CONNECTION",
+  "actionTypeId": "0-5",
+  "actionId": "1",
+  "actionTypeVersion": 0,
+  "connection": { "edgeType": "STANDARD", "nextActionId": "2" },
+  "fields": { ... }
+}
+```
+**Pattern:** Always use `connection` object for chaining + `actionTypeVersion: 0` on every action
+
+---
+
+### 2026-03-19 — WORKFLOW — Date properties: use OBJECT_PROPERTY value type
+**Trigger:** Tried to set `tcs_approved_date` to current date in a deal workflow
+**Failed because:** `STATIC_VALUE` with `{{now}}`, ISO dates, and non-epoch strings all rejected. Only epoch ms as string works for static dates.
+**Fix:** Two approaches work:
+1. **Static date (epoch ms):** `{"type": "STATIC_VALUE", "staticValue": "1773890346945"}` — hardcoded, won't update
+2. **Dynamic date (copy from property):** `{"type": "OBJECT_PROPERTY", "propertyName": "hs_lastmodifieddate"}` — copies the enrolled object's last modified date, which equals "now" at enrollment time
+```json
+{
+  "type": "SINGLE_CONNECTION",
+  "actionTypeId": "0-5",
+  "actionId": "2",
+  "actionTypeVersion": 0,
+  "fields": {
+    "property_name": "tcs_approved_date",
+    "value": { "type": "OBJECT_PROPERTY", "propertyName": "hs_lastmodifieddate" }
+  }
+}
+```
+**Pattern:** For "set date to today" → use OBJECT_PROPERTY with hs_lastmodifieddate. For specific dates → use STATIC_VALUE with epoch ms string.
+
+---
+
+### 2026-03-19 — WORKFLOW — ✅ Deal workflow with boolean + date set property (CONFIRMED WORKING)
+**What:** Deal PLATFORM_FLOW workflow triggered on `quote_signed = true`. Action 1: Set `t_c_s_approved = true` (STATIC_VALUE). Action 2: Set `tcs_approved_date` to `hs_lastmodifieddate` (OBJECT_PROPERTY). Both chained via `connection` objects with `actionTypeVersion: 0`.
+**Pattern:** Complete deal property update pattern: LIST_BASED enrollment + SINGLE_CONNECTION actions + connection chaining + OBJECT_PROPERTY for dynamic dates
