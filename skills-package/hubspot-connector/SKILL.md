@@ -253,6 +253,18 @@ This connector's Workflow Creation Rules section is a living document. When new 
 - A new enrollment criteria pattern is confirmed working
 - A workaround is found for a documented limitation
 
+## Association Type IDs (for workflow actions + enrollment)
+
+| ID | From | To | Description |
+|----|------|----|-------------|
+| 2 | Contact | Company | Standard |
+| 3 | Deal | Contact | Standard |
+| 8 | Company | Task | Task association |
+| 63 | Deal | Quote | Standard |
+| 280 | Contact | Company | Primary company |
+| 341 | Deal | Company | Standard |
+| 342 | Company | Deal | Reverse |
+
 ## Object Type IDs
 
 | Object | ID |
