@@ -325,3 +325,74 @@ Owner IDs: Fetch dynamically via `list_portals` → `portal_capabilities`
 ### 2026-03-19 — WORKFLOW — ✅ Deal workflow with boolean + date set property (CONFIRMED WORKING)
 **What:** Deal PLATFORM_FLOW workflow triggered on `quote_signed = true`. Action 1: Set `t_c_s_approved = true` (STATIC_VALUE). Action 2: Set `tcs_approved_date` to `hs_lastmodifieddate` (OBJECT_PROPERTY). Both chained via `connection` objects with `actionTypeVersion: 0`.
 **Pattern:** Complete deal property update pattern: LIST_BASED enrollment + SINGLE_CONNECTION actions + connection chaining + OBJECT_PROPERTY for dynamic dates
+
+---
+
+### 2026-03-19 — WORKFLOW — Association-based enrollment (Deal → Quote) with TIME_RANGED date filter
+**Trigger:** User wanted "when quote is signed, update deal" — needed to enroll deals when an associated quote's ESign date is today
+**Failed because:** Initial approach used `quote_signed` boolean property as trigger instead of checking the actual associated Quote object's ESign date
+**Fix:** Use `filterBranchType: "ASSOCIATION"` to check associated objects. The correct enrollment structure:
+```json
+{
+  "type": "LIST_BASED",
+  "shouldReEnroll": true,
+  "listFilterBranch": {
+    "filterBranchType": "OR", "filterBranchOperator": "OR",
+    "filterBranches": [{
+      "filterBranchType": "AND", "filterBranchOperator": "AND",
+      "filterBranches": [{
+        "filterBranchType": "ASSOCIATION",
+        "filterBranchOperator": "AND",
+        "objectTypeId": "0-14",
+        "operator": "IN_LIST",
+        "associationTypeId": 63,
+        "associationCategory": "HUBSPOT_DEFINED",
+        "filterBranches": [],
+        "filters": [{
+          "property": "hs_esign_date",
+          "filterType": "PROPERTY",
+          "operation": {
+            "operator": "IS_BETWEEN",
+            "operationType": "TIME_RANGED",
+            "type": "TIME_RANGED",
+            "includeObjectsWithNoValueSet": false,
+            "lowerBoundEndpointBehavior": "INCLUSIVE",
+            "upperBoundEndpointBehavior": "EXCLUSIVE",
+            "propertyParser": "VALUE",
+            "lowerBoundTimePoint": {
+              "timezoneSource": "CUSTOM",
+              "zoneId": "Australia/Melbourne",
+              "indexReference": { "referenceType": "TODAY" },
+              "timeType": "INDEXED"
+            },
+            "upperBoundTimePoint": {
+              "timezoneSource": "CUSTOM",
+              "zoneId": "Australia/Melbourne",
+              "indexReference": { "referenceType": "TODAY" },
+              "offset": { "days": 1 },
+              "timeType": "INDEXED"
+            }
+          }
+        }]
+      }],
+      "filters": []
+    }],
+    "filters": []
+  }
+}
+```
+**Key fields:**
+- `filterBranchType: "ASSOCIATION"` — checks properties on associated objects
+- `objectTypeId: "0-14"` — Quotes object
+- `associationTypeId: 63` — Deal-to-Quote association (HUBSPOT_DEFINED)
+- `operator: "IN_LIST"` — "any associated quote matches"
+- `TIME_RANGED` operation with `indexReference.referenceType: "TODAY"` — "date is today"
+- `timeType: "INDEXED"` + `timezoneSource: "CUSTOM"` + `zoneId` — timezone-aware date comparison
+- Upper bound uses `offset: { days: 1 }` to create a today-to-tomorrow exclusive range
+**Pattern:** To enroll based on associated object properties: use ASSOCIATION filterBranch with objectTypeId, associationTypeId, associationCategory. For "date is today": use TIME_RANGED with IS_BETWEEN + TODAY referenceType + 1-day offset upper bound.
+
+---
+
+### 2026-03-19 — WORKFLOW — ✅ Complete Quote-Signed Deal Update (CONFIRMED WORKING — reverse-engineered from manual fix)
+**What:** PLATFORM_FLOW deal workflow. Enrollment: Deal associated to any Quote where hs_esign_date is today (ASSOCIATION + TIME_RANGED). Actions: Set t_c_s_approved=true (STATIC_VALUE) → Set tcs_approved_date=hs_lastmodifieddate (OBJECT_PROPERTY). Re-enrollment enabled.
+**Pattern:** For "when quote is signed → update deal": use ASSOCIATION enrollment on Quote (0-14) with TIME_RANGED date filter, NOT a boolean property trigger. This is the correct HubSpot pattern for quote-triggered deal workflows.
