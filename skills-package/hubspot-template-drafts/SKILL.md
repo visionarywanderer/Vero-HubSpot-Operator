@@ -340,4 +340,5 @@ Standard association pairs: contacts↔companies, contacts↔deals, contacts↔t
    - Tier 3: Reverse-engineer from portal workflows via `get_workflow`
    - Tier 4: Partial install — deploy what works, surface `manualSteps` for the rest
 10. **Update learnings** with any new patterns discovered. Sanitize all portal data.
-11. State: "No portal-specific data has been persisted to skills or memory."
+11. **Cleanup temp data**: Run `rm -rf ~/.claude/projects/-Users-pietro-Documents-Vero-HubSpot-Operator/*/tool-results/*.txt` to wipe any cached API responses containing portal data.
+12. State: "No portal-specific data has been persisted to skills or memory."
