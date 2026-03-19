@@ -441,8 +441,9 @@ Root (OR) ─── filters: []
 
 ## Procedure
 
-1. **Portal check**: Call `list_portals` to identify connected portals. If multiple portals exist, ask the user which one to target. Pass `portalId` to every subsequent MCP tool call.
-2. Ask the user: what should the list filter for? Dynamic, manual, or snapshot?
+1. **⚡ FIRST: Read `hubspot-learnings` skill** — cross-check your planned spec against ALL known patterns and failures. Do NOT skip this step.
+2. **Portal check**: Call `list_portals` to identify connected portals. If multiple portals exist, ask the user which one to target. Pass `portalId` to every subsequent MCP tool call.
+3. Ask the user: what should the list filter for? Dynamic, manual, or snapshot?
 3. **Duplicate check**: Call `list_lists` MCP tool (with `portalId`) to see existing lists in the portal. Compare the planned list name against existing ones. If a list with the same name exists, tell the user — list names must be globally unique and deploying will fail.
 3. **Property check**: Call `list_properties` MCP tool for the target object type to verify that any properties used in filters actually exist. If they don't, flag them and offer to create property drafts first.
 4. Determine object type and appropriate `objectTypeId`
@@ -461,4 +462,4 @@ Root (OR) ─── filters: []
 8. Call `save_list_draft` MCP tool with the spec — the tool will also check for duplicate drafts and portal conflicts, returning warnings if found
 9. If the tool returns `warning_portal_duplicates`, stop and inform the user — list names must be unique
 10. Tell the user to deploy from the Lists & Segments page
-11. If list returns unexpected results, check operationType matches the property's actual type
+11. If list returns unexpected results, check operationType matches the property's actual type, AND **append the new failure pattern to `hubspot-learnings`**

@@ -154,10 +154,11 @@ stages:                       # REQUIRED — min 2 stages, max 100
 
 ## Procedure
 
-1. **Portal check**: Call `list_portals` to identify connected portals. If multiple portals exist, ask the user which one to target. Pass `portalId` to every subsequent MCP tool call.
-2. Ask the user: deals or tickets pipeline? What stages do they need?
-3. **Duplicate check**: Call `list_pipelines` MCP tool (with `portalId`) for the target `objectType` (deals or tickets) to see existing pipelines and their stages. Compare the planned pipeline label against existing ones. If a similar pipeline exists, show the user its stages and ask whether to skip, extend, or create a new one.
-3. Build stages with sequential `displayOrder` starting at 0
+1. **⚡ FIRST: Read `hubspot-learnings` skill** — cross-check your planned spec against ALL known patterns and failures. Do NOT skip this step.
+2. **Portal check**: Call `list_portals` to identify connected portals. If multiple portals exist, ask the user which one to target. Pass `portalId` to every subsequent MCP tool call.
+3. Ask the user: deals or tickets pipeline? What stages do they need?
+4. **Duplicate check**: Call `list_pipelines` MCP tool (with `portalId`) for the target `objectType` (deals or tickets) to see existing pipelines and their stages. Compare the planned pipeline label against existing ones. If a similar pipeline exists, show the user its stages and ask whether to skip, extend, or create a new one.
+5. Build stages with sequential `displayOrder` starting at 0
 4. For deal pipelines:
    - Add `probability` metadata to each stage (increasing)
    - Always include Closed Won (`isClosed: "true"`, `closedWon: "true"`, `probability: "1.0"`)
@@ -167,4 +168,4 @@ stages:                       # REQUIRED — min 2 stages, max 100
 7. Call `save_pipeline_draft` MCP tool with the spec — the tool will also check for duplicate drafts and portal conflicts, returning warnings if found
 8. If the tool returns `warning_portal_duplicates`, stop and inform the user
 9. Tell the user to deploy from the Pipelines page
-10. If deploy fails, match error against Troubleshooting Guide and fix
+10. If deploy fails, match error against Troubleshooting Guide, fix, AND **append the new failure pattern to `hubspot-learnings`**

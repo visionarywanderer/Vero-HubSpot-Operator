@@ -190,16 +190,17 @@ quotes, calls, emails, meetings, notes, tasks
 
 ## Procedure
 
-1. **Portal check**: Call `list_portals` to identify connected portals. If multiple portals exist, ask the user which one to target. Pass `portalId` to every subsequent MCP tool call.
-2. Ask the user what properties they need if not clear
-3. **Duplicate check**: Call `list_properties` MCP tool (with `portalId`) for the target `objectType` to see what already exists in the portal. Compare your planned property `name` values against existing ones. If an exact match exists, tell the user and ask whether to skip, update, or create with a different name.
-3. Determine: object type, property type, field type (use Matrix)
-4. For enumeration types, define options with `label`/`value`/`displayOrder`
-5. Validate option `value` strings: lowercase, no spaces, `^[a-z0-9_]+$`
-6. **Pre-flight check**: Verify ALL critical rules from the checklist
-7. Build the spec with all required fields
-8. Call `save_property_draft` MCP tool with the spec — the tool will also check for duplicate drafts and portal conflicts, returning warnings if found
-9. If the tool returns `warning_portal_duplicates`, stop and inform the user before continuing
-10. Tell the user to deploy from the Properties page
-11. If creating multiple properties, use the multi-property batch format
-12. If deploy fails, match error against Troubleshooting Guide and fix
+1. **⚡ FIRST: Read `hubspot-learnings` skill** — cross-check your planned spec against ALL known patterns and failures. Do NOT skip this step.
+2. **Portal check**: Call `list_portals` to identify connected portals. If multiple portals exist, ask the user which one to target. Pass `portalId` to every subsequent MCP tool call.
+3. Ask the user what properties they need if not clear
+4. **Duplicate check**: Call `list_properties` MCP tool (with `portalId`) for the target `objectType` to see what already exists in the portal. Compare your planned property `name` values against existing ones. If an exact match exists, tell the user and ask whether to skip, update, or create with a different name.
+5. Determine: object type, property type, field type (use Matrix)
+6. For enumeration types, define options with `label`/`value`/`displayOrder`
+7. Validate option `value` strings: lowercase, no spaces, `^[a-z0-9_]+$`
+8. **Pre-flight check**: Verify ALL critical rules from the checklist AND cross-check against `hubspot-learnings` quick reference
+9. Build the spec with all required fields
+10. Call `save_property_draft` MCP tool with the spec — the tool will also check for duplicate drafts and portal conflicts, returning warnings if found
+11. If the tool returns `warning_portal_duplicates`, stop and inform the user before continuing
+12. Tell the user to deploy from the Properties page
+13. If creating multiple properties, use the multi-property batch format
+14. If deploy fails, match error against Troubleshooting Guide, fix, AND **append the new failure pattern to `hubspot-learnings`**
