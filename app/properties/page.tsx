@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import { usePortal } from "@/hooks/usePortal";
 import { DraftsTable, type Draft } from "@/components/drafts/DraftsTable";
@@ -54,7 +54,7 @@ export default function PropertiesPage() {
   const [specJson, setSpecJson] = useState("");
   const [showJsonInput, setShowJsonInput] = useState(false);
 
-  const refresh = () => {
+  const refresh = useCallback(() => {
     if (!activePortal) { setProperties([]); setGroups([]); setDrafts([]); return; }
     setLoading(true);
     const q = encodeURIComponent(activePortal.id);
@@ -65,10 +65,10 @@ export default function PropertiesPage() {
       .catch(() => { setProperties([]); setGroups([]); }).finally(() => setLoading(false));
     apiGet<{ ok: true; drafts: Draft[] }>(`/api/properties/drafts?portalId=${q}`)
       .then((r) => setDrafts(r.drafts)).catch(() => setDrafts([]));
-  };
+  }, [activePortal, objectType]);
 
-  useEffect(() => { refresh(); }, [activePortal, objectType]);
-  useEffect(() => { const v = TYPE_FIELD_MAP[newType]; if (v && !v.includes(newFieldType)) setNewFieldType(v[0]); }, [newType]);
+  useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => { const v = TYPE_FIELD_MAP[newType]; if (v && !v.includes(newFieldType)) setNewFieldType(v[0]); }, [newType, newFieldType]);
 
   const filtered = properties.filter((p) => {
     if (!showBuiltIn && p.hubspotDefined) return false;

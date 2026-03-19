@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import { usePortal } from "@/hooks/usePortal";
 import { DraftsTable, type Draft } from "@/components/drafts/DraftsTable";
@@ -36,7 +36,7 @@ export default function PipelinesPage() {
   const [specJson, setSpecJson] = useState("");
   const [showJsonInput, setShowJsonInput] = useState(false);
 
-  const refresh = () => {
+  const refresh = useCallback(() => {
     if (!activePortal) { setPipelines([]); setDrafts([]); return; }
     setLoading(true);
     const q = encodeURIComponent(activePortal.id);
@@ -44,9 +44,9 @@ export default function PipelinesPage() {
       .then((r) => setPipelines(r.pipelines)).catch(() => setPipelines([])).finally(() => setLoading(false));
     apiGet<{ ok: true; drafts: Draft[] }>(`/api/pipelines/drafts?portalId=${q}`)
       .then((r) => setDrafts(r.drafts)).catch(() => setDrafts([]));
-  };
+  }, [activePortal, objectType]);
 
-  useEffect(() => { refresh(); }, [activePortal, objectType]);
+  useEffect(() => { refresh(); }, [refresh]);
 
   const getPipelineId = (p: Pipeline) => String(p.id ?? p.pipelineId ?? "");
   const getStageId = (s: Stage) => String(s.id ?? s.stageId ?? "");

@@ -94,14 +94,14 @@ export default function TemplatesPage() {
     finally { setLoading(false); }
   }, []);
 
-  const refreshDrafts = () => {
+  const refreshDrafts = useCallback(() => {
     if (!activePortal) { setDrafts([]); return; }
     apiGet<{ ok: true; drafts: Draft[] }>(`/api/templates/drafts?portalId=${encodeURIComponent(activePortal.id)}`)
       .then((r) => setDrafts(r.drafts ?? [])).catch(() => setDrafts([]));
-  };
+  }, [activePortal]);
 
   useEffect(() => { fetchTemplates(); }, [fetchTemplates]);
-  useEffect(() => { refreshDrafts(); }, [activePortal]);
+  useEffect(() => { refreshDrafts(); }, [refreshDrafts]);
 
   const handleInstallRequest = (templateId: string, templateName: string) => {
     if (!activePortal) return;
