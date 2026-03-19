@@ -128,22 +128,33 @@ function createMcpServer(): McpServer {
 // ---------------------------------------------------------------------------
 
 function authenticateRequest(req: Request): boolean {
-  const apiKey = process.env.MCP_API_KEY;
-  if (!apiKey) return false;
+  // Extract the key from either header or URL query param
+  let key: string | null = null;
 
-  // 1. Bearer token in Authorization header
   const authHeader = req.headers.get("authorization");
-  if (authHeader?.startsWith("Bearer ") && authHeader.slice(7) === apiKey) {
-    return true;
+  if (authHeader?.startsWith("Bearer ")) {
+    key = authHeader.slice(7);
   }
 
-  // 2. API key as URL query parameter (?key=...) — for claude.ai connectors
-  //    which don't support custom headers
+  if (!key) {
+    try {
+      const url = new URL(req.url);
+      key = url.searchParams.get("key");
+    } catch {} // intentional: URL parsing failure means no key param
+  }
+
+  if (!key) return false;
+
+  // 1. Check against MCP_API_KEY env var (legacy single-key mode)
+  const envKey = process.env.MCP_API_KEY;
+  if (envKey && key === envKey) return true;
+
+  // 2. Check against managed keys in the database
   try {
-    const url = new URL(req.url);
-    const keyParam = url.searchParams.get("key");
-    if (keyParam && keyParam === apiKey) return true;
-  } catch {} // intentional: URL parsing failure means no key param
+    const { mcpKeysStore } = require("./mcp-keys-store");
+    const validated = mcpKeysStore.validate(key);
+    if (validated) return true;
+  } catch {} // intentional: DB may not be available during startup
 
   return false;
 }
