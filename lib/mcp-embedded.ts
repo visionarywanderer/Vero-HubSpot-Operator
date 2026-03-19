@@ -131,10 +131,21 @@ function authenticateRequest(req: Request): boolean {
   const apiKey = process.env.MCP_API_KEY;
   if (!apiKey) return false;
 
+  // 1. Bearer token in Authorization header
   const authHeader = req.headers.get("authorization");
-  if (!authHeader?.startsWith("Bearer ")) return false;
+  if (authHeader?.startsWith("Bearer ") && authHeader.slice(7) === apiKey) {
+    return true;
+  }
 
-  return authHeader.slice(7) === apiKey;
+  // 2. API key as URL query parameter (?key=...) — for claude.ai connectors
+  //    which don't support custom headers
+  try {
+    const url = new URL(req.url);
+    const keyParam = url.searchParams.get("key");
+    if (keyParam && keyParam === apiKey) return true;
+  } catch {} // intentional: URL parsing failure means no key param
+
+  return false;
 }
 
 // ---------------------------------------------------------------------------
