@@ -51,6 +51,12 @@ This is the central coordinator for the Vero HubSpot Operator skill system. It r
 - State: "No portal-specific data has been persisted to skills or memory."
 - If a learnings entry was added, verify it uses placeholders before saving
 
+### Stale data prevention:
+- NEVER reference portal data from earlier in the conversation — always use the LATEST tool result
+- If `list_portals` was called earlier and returns different results now, ONLY use the new result
+- Never state portal counts, IDs, names, workflows, or properties from conversation memory — always re-fetch
+- Treat every MCP tool response as the single source of truth, discarding any prior knowledge from the same session
+
 ---
 
 ## Skill Catalog

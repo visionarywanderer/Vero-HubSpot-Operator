@@ -75,6 +75,8 @@ Owner IDs, portal limitations, and scope availability change over time. The app 
 
 **Privacy rule:** Never persist portal IDs, owner IDs, owner names, or any client data in CLAUDE.md, skills files, or memory files. Use `{portal_id}` and `{owner_id}` placeholders in all documentation examples. After completing work on a portal, state: "No portal-specific data has been persisted."
 
+**Stale data rule:** NEVER reference portal data from earlier in the conversation. Always use the LATEST tool result as the single source of truth. If you called `list_portals` 10 minutes ago and call it again now, ONLY use the new result — the old one is stale. Never state portal counts, IDs, names, owner IDs, or workflow lists from memory — always from the most recent API response.
+
 ## Naming Conventions
 
 - **Workflows:** Always prefix with `[VD]` (e.g., `[VD] Lead Router`)
