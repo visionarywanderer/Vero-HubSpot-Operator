@@ -594,16 +594,29 @@ server.tool(
 
 server.tool(
   "deploy_workflow",
-  "Deploy a new workflow (always created disabled for safety). Use the v4 action format.",
+  [
+    "Deploy a new workflow to HubSpot (always created disabled for safety). Uses the v4 action format.",
+    "",
+    "PARTIAL INSTALL: If HubSpot rejects specific actions (e.g. unsupported action types like 0-9 or 0-11),",
+    "the engine automatically strips those actions, re-links the remaining chain, and retries up to 5 times.",
+    "The response will include a 'partial' report listing:",
+    "  • installedActionIds — which actions were deployed successfully",
+    "  • strippedActions   — which actions were removed and why",
+    "  • manualSteps       — exact instructions for the user to complete manually in HubSpot UI",
+    "",
+    "When partial install occurs, ALWAYS surface the manualSteps to the user so they know what to do next.",
+    "New failure patterns are automatically appended to hubspot-learnings so future installs can avoid them.",
+  ].join("\n"),
   {
     workflow: z.record(z.string(), z.unknown()).describe("Full workflow definition matching HubSpot v4 format"),
     portalId: z.string().optional().describe("Portal ID. Omit to use the active portal set via set_active_portal."),
+    allowPartial: z.boolean().optional().describe("If true (default), strip unsupported actions and retry instead of hard-failing."),
   },
-  async ({ workflow, portalId }) => {
+  async ({ workflow, portalId, allowPartial }) => {
     const data = await api({
       method: "POST",
       path: "/api/workflows/deploy",
-      body: { spec: workflow, portalId },
+      body: { spec: workflow, portalId, allowPartial },
     });
     return textResult(data);
   }
@@ -730,7 +743,12 @@ server.tool(
 
 server.tool(
   "execute_config",
-  "Execute a Config Engine template — creates all resources (properties, pipelines, workflows, lists) in dependency order",
+  [
+    "Execute a Config Engine template — creates all resources (properties, pipelines, workflows, lists) in dependency order.",
+    "",
+    "PARTIAL INSTALL: Same as install_template — workflows use the partial-install engine.",
+    "Check the response's top-level 'manualSteps' array and surface it to the user.",
+  ].join("\n"),
   {
     resources: z.record(z.string(), z.unknown()).describe("TemplateResources object"),
     dryRun: z.boolean().optional().describe("If true, validates and resolves dependencies without creating anything"),
@@ -748,7 +766,19 @@ server.tool(
 
 server.tool(
   "install_template",
-  "Install a saved template by ID",
+  [
+    "Install a saved template (properties, pipelines, lists, workflows) by ID.",
+    "",
+    "PARTIAL INSTALL: Workflows inside the template use the partial-install engine.",
+    "If any workflow action type is unsupported on this portal, it is stripped automatically",
+    "and the workflow is deployed with the remaining actions. The response includes:",
+    "  • results[].status: 'partial' for affected workflows",
+    "  • results[].strippedActions: which actions were removed",
+    "  • manualSteps (top-level): aggregate list of manual completion steps",
+    "",
+    "ALWAYS show the top-level manualSteps to the user after a partial install so they",
+    "know exactly which steps to complete in HubSpot UI.",
+  ].join("\n"),
   {
     templateId: z.string(),
     dryRun: z.boolean().optional(),

@@ -3,6 +3,8 @@ import { apiClient, hubSpotClient } from "@/lib/api-client";
 import { authManager } from "@/lib/auth-manager";
 import { changeLogger } from "@/lib/change-logger";
 import { canWriteInEnvironment, missingScopesFor } from "@/lib/safety-governance";
+import { attemptPartialWorkflowInstall, type PartialWorkflowInstallResult } from "@/lib/partial-install";
+import { appendPartialInstallLearning } from "@/lib/skills-learner";
 
 export type WorkflowSpec = Record<string, unknown>;
 
@@ -18,6 +20,8 @@ export interface DeployResult {
   revisionId?: string;
   name?: string;
   isEnabled?: boolean;
+  /** Present when some actions were stripped during partial-install */
+  partial?: PartialWorkflowInstallResult;
 }
 
 export interface WorkflowSummary {
@@ -34,6 +38,8 @@ export interface WorkflowEngine {
   validate(spec: WorkflowSpec): ValidationResult;
   preview(spec: WorkflowSpec): string;
   deploy(spec: WorkflowSpec): Promise<DeployResult>;
+  /** Like deploy() but falls back to partial-install if HubSpot rejects the full spec. */
+  deployPartial(spec: WorkflowSpec): Promise<DeployResult>;
   list(): Promise<WorkflowSummary[]>;
   get(flowId: string): Promise<WorkflowSpec>;
   update(flowId: string, spec: WorkflowSpec): Promise<DeployResult>;
@@ -212,6 +218,113 @@ class HubSpotWorkflowEngine implements WorkflowEngine {
       name: String((deployed.name as string) || safeSpec.name || ""),
       isEnabled: Boolean(deployed.isEnabled)
     };
+  }
+
+  async deployPartial(spec: WorkflowSpec): Promise<DeployResult> {
+    const governanceErrors = await this.enforceWriteGovernance("B2");
+    if (governanceErrors.length > 0) {
+      return { success: false, errors: governanceErrors };
+    }
+
+    const validation = this.validate(spec);
+    if (!validation.valid) {
+      return { success: false, errors: validation.errors };
+    }
+
+    const safeSpec = normalizeWorkflowDefaults(spec);
+    const workflowName = String(safeSpec.name || "Unnamed Workflow");
+
+    // Try full deploy first
+    try {
+      const response = await apiClient.workflows.create(safeSpec);
+      const created = response.data as { id?: string; flowId?: string; name?: string };
+      const flowId = created.id || created.flowId;
+
+      if (!flowId) {
+        return { success: false, errors: ["Deploy failed: flowId missing in response"] };
+      }
+
+      const deployed = await this.get(flowId);
+      const portalId = authManager.getActivePortal().id;
+      await saveWorkflowSpecArtifact(portalId, workflowName, safeSpec);
+      await changeLogger.log({
+        portalId,
+        layer: "api",
+        module: "B2",
+        action: "workflow_deploy",
+        objectType: "workflow",
+        recordId: flowId,
+        description: `Deployed workflow "${workflowName}" (disabled)`,
+        after: safeSpec,
+        status: "success",
+        initiatedBy: "VeroDigital",
+      });
+
+      return {
+        success: true,
+        flowId,
+        revisionId: String((deployed.revisionId as string) || ""),
+        name: String((deployed.name as string) || workflowName),
+        isEnabled: Boolean(deployed.isEnabled),
+      };
+    } catch {
+      // Fall through to partial-install engine
+    }
+
+    // Partial-install: strip unsupported actions, retry
+    const partial = await attemptPartialWorkflowInstall(
+      safeSpec as Record<string, unknown>,
+      workflowName
+    );
+
+    // Self-improve: log new failure patterns
+    for (const stripped of partial.strippedActions) {
+      appendPartialInstallLearning({
+        category: "WORKFLOW",
+        workflowName,
+        actionTypeId: stripped.actionTypeId,
+        actionLabel: stripped.label,
+        error: stripped.reason,
+      });
+    }
+
+    if (partial.status === "failed") {
+      return {
+        success: false,
+        errors: [partial.error ?? "Workflow deployment failed after partial-install attempts"],
+        partial,
+      };
+    }
+
+    // Partial or full success
+    const portalId = authManager.getActivePortal().id;
+    if (partial.flowId) {
+      const deployed = await this.get(partial.flowId).catch(() => ({} as WorkflowSpec));
+      await saveWorkflowSpecArtifact(portalId, workflowName, safeSpec);
+      await changeLogger.log({
+        portalId,
+        layer: "api",
+        module: "B2",
+        action: "workflow_deploy",
+        objectType: "workflow",
+        recordId: partial.flowId,
+        description: `Partially deployed workflow "${workflowName}" — ${partial.strippedActions.length} action(s) stripped`,
+        after: { ...safeSpec, strippedActions: partial.strippedActions },
+        status: "success",
+        initiatedBy: "VeroDigital",
+      });
+
+      return {
+        success: true,
+        flowId: partial.flowId,
+        revisionId: String((deployed.revisionId as string) || ""),
+        name: String((deployed.name as string) || workflowName),
+        isEnabled: Boolean(deployed.isEnabled),
+        partial,
+      };
+    }
+
+    return { success: false, errors: ["Partial install did not return a flowId"], partial };
   }
 
   async list(): Promise<WorkflowSummary[]> {
