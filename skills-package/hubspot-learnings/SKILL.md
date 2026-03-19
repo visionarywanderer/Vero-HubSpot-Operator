@@ -65,7 +65,7 @@ These 15 rules prevent 90% of failures. Check every one before deploying.
 | 15 | 3-second delay between workflow creations to avoid rate limits | WORKFLOW |
 | 16 | Every level needs `type` field: enrollment=`LIST_BASED`, branches=`OR`/`AND`, filters=`PROPERTY`, operations=match `operationType`, actions=`SINGLE_CONNECTION` | WORKFLOW |
 | 17 | Actions need `actionTypeVersion: 0` and `connection: {edgeType: "STANDARD", nextActionId: "X"}` for chaining | WORKFLOW |
-| 18 | Date "set to today" → use `OBJECT_PROPERTY` with `hs_lastmodifieddate`. Static dates → epoch ms string in `STATIC_VALUE` | WORKFLOW |
+| 18 | Date "set to today" → BEST: use `TIMESTAMP` with `EXECUTION_TIME` (rule 27). FALLBACK: `OBJECT_PROPERTY` with `hs_lastmodifieddate`. Static dates → epoch ms string. | WORKFLOW |
 | 19 | Association enrollment: use `filterBranchType: "ASSOCIATION"` with `objectTypeId`, `associationTypeId`, `associationCategory` | WORKFLOW |
 | 20 | EVENT_BASED enrollment (property change): use `eventFilterBranches` with `UNIFIED_EVENTS`, `hs_name`/`hs_value` pattern | WORKFLOW |
 | 21 | Create Record (0-14): properties array with `targetProperty` + `value` objects. Supports STATIC_VALUE, OBJECT_PROPERTY, RELATIVE_DATETIME | WORKFLOW |
@@ -74,6 +74,15 @@ These 15 rules prevent 90% of failures. Check every one before deploying.
 | 24 | Event Wait (0-29): `event_filter_branches` with UNIFIED_EVENTS, `expiration_minutes` for timeout. Branch result via STATIC_BRANCH on `hs_event_criteria_met` | WORKFLOW |
 | 25 | Set Property on associated object: add `association: { associationCategory, associationTypeId }` to 0-5 fields | WORKFLOW |
 | 26 | Re-enrollment triggers: use `reEnrollmentTriggersFilterBranches` with `hs_name`/`hs_value` pattern (STRING + ENUMERATION operators) | WORKFLOW |
+| 27 | **Date "set to NOW" — use `TIMESTAMP` type**: `"value": {"timestampType": "EXECUTION_TIME", "type": "TIMESTAMP"}`. This is BETTER than OBJECT_PROPERTY with hs_lastmodifieddate. | WORKFLOW |
+| 28 | Custom object workflows: use `PLATFORM_FLOW`, custom `objectTypeId`, and `USER_DEFINED` association category in dataSources | WORKFLOW |
+| 29 | Delete Object action: use portal-specific actionTypeId (not standard), `actionTypeVersion: 42`, empty fields, MUST be terminal (no connection) | WORKFLOW |
+| 30 | Add/Remove from Static List: portal-specific actionTypeId, `actionTypeVersion: 3`, `list_id` + `operation: "ADD"/"REMOVE"` | WORKFLOW |
+| 31 | Auto-Associate by Property Match: portal-specific actionTypeId, `actionTypeVersion: 6`, qualified property names `p{object_id}_{property}` | WORKFLOW |
+| 32 | Copy Owner from Associated Object: actionTypeId `0-25`, copies `hubspot_owner_id` via association | WORKFLOW |
+| 33 | MULTISTRING operators for text matching: `CONTAINS`, `CONTAINS_EXACTLY`, `DOES_NOT_CONTAIN` — use with `operationType: "MULTISTRING"` | WORKFLOW |
+| 34 | FETCHED_OBJECT_PROPERTY value type: `"type": "FETCHED_OBJECT_PROPERTY"` with `propertyToken` for cross-object property references in email tokens | WORKFLOW |
+| 35 | Refer to `docs/workflow-pattern-catalog-v2.md` for all 35+ enrollment, action, and branching patterns | GENERAL |
 
 ---
 

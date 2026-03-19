@@ -276,4 +276,50 @@ This connector's Workflow Creation Rules section is a living document. When new 
 | Ticket | `0-5` |
 | Product | `0-7` |
 | Line Item | `0-8` |
-| Custom Objects | `2-XXXXXX` |
+| Custom Objects | `2-XXXXXX` (portal-specific, fetch via API) |
+| Quote | `0-14` |
+| Call | `0-48` |
+| Email | `0-49` |
+| Meeting | `0-47` |
+| Task | `0-27` |
+| Lead | `0-136` |
+
+## Custom Object Workflow Rules
+
+When creating workflows on custom objects:
+
+1. **Flow type**: Must be `PLATFORM_FLOW` (not CONTACT_FLOW)
+2. **objectTypeId**: Use the portal-specific custom object ID (e.g., `2-XXXXXX`)
+3. **Association category**: Use `USER_DEFINED` (not `HUBSPOT_DEFINED`) for custom object associations in dataSources
+4. **Qualified property names**: For auto-associate actions, use format `p{object_id}_{property_name}`
+5. **dataSources**: Custom objects may need `ASSOCIATED_OBJECTS` with `USER_DEFINED` association category
+6. **Refer to** `docs/workflow-pattern-catalog-v2.md` Section 10 for complete custom object patterns
+
+## Action Type Quick Reference (v2)
+
+| actionTypeId | Action | Notes |
+|---|---|---|
+| `0-1` | Delay | `delta` in minutes, `time_unit: "MINUTES"` |
+| `0-3` | Create task | Requires `tasks` scope |
+| `0-4` | Send enrolled email | `content_id` field |
+| `0-5` | Set property | Most common. Supports STATIC_VALUE, OBJECT_PROPERTY, TIMESTAMP |
+| `0-8` | Internal email notification | `subject`, `body`, `owner_properties` or `team_ids` |
+| `0-14` | Create record | `object_type_id`, `properties[]`, `associations[]` |
+| `0-23` | Send to specific recipients | `email_content_id`, `recipient_emails[]` |
+| `0-25` | Copy owner from association | Copies `hubspot_owner_id` via association |
+| `0-29` | Event wait | `event_filter_branches`, `expiration_minutes` |
+| `0-31` | Set marketing contact status | `actionTypeVersion: 13` |
+| `0-35` | Date-based delay | `date` (OBJECT_PROPERTY), `delta`, `time_of_day` |
+| Portal-specific | Delete object | `actionTypeVersion: 42`, empty fields, terminal |
+| Portal-specific | Add/remove from list | `actionTypeVersion: 3`, `list_id`, `operation` |
+| Portal-specific | Auto-associate | `actionTypeVersion: 6`, qualified property names |
+
+## Value Types for Set Property (0-5)
+
+| type | Use | Example |
+|---|---|---|
+| `STATIC_VALUE` | Hardcoded value | `{"staticValue": "true", "type": "STATIC_VALUE"}` |
+| `OBJECT_PROPERTY` | Copy from enrolled object | `{"propertyName": "hs_lastmodifieddate", "type": "OBJECT_PROPERTY"}` |
+| `TIMESTAMP` | Set to execution time (NOW) | `{"timestampType": "EXECUTION_TIME", "type": "TIMESTAMP"}` |
+| `FETCHED_OBJECT_PROPERTY` | Copy from associated object | `{"propertyToken": "...", "type": "FETCHED_OBJECT_PROPERTY"}` |
+| `RELATIVE_DATETIME` | Date relative to now | `{"timeDelay": {"delta": 90, "timeUnit": "DAYS"}, "type": "RELATIVE_DATETIME"}` |
