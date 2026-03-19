@@ -639,7 +639,7 @@ server.tool(
     const data = await api({
       method: "GET",
       path: `/api/workflows/${flowId}`,
-      params: portalId ? { portalId } : undefined,
+      query: portalId ? { portalId } : undefined,
     });
     return textResult(data);
   }
