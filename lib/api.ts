@@ -37,8 +37,8 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
     const message =
       (typeof body.error === "string" && body.error) ||
       (typeof body.message === "string" && body.message) ||
-      (Array.isArray(body.errors) && body.errors.length > 0 && body.errors.join("; ")) ||
-      (body.partial && typeof (body.partial as Record<string, unknown>).error === "string" && (body.partial as Record<string, unknown>).error as string) ||
+      (Array.isArray(body.errors) && body.errors.length > 0 ? body.errors.join("; ") : "") ||
+      (body.partial && typeof (body.partial as Record<string, unknown>).error === "string" ? String((body.partial as Record<string, unknown>).error) : "") ||
       "Request failed";
     throw new ApiError(message, res.status);
   }
