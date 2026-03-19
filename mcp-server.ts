@@ -191,6 +191,42 @@ server.tool(
 );
 
 server.tool(
+  "set_active_portal",
+  "Set the active portal for this session by name. Once set, all other tools (create_workflow, install_template, list_properties, etc.) will use this portal automatically — no need to pass portalId every time. Use list_portals first to see available portal names.",
+  {
+    portalName: z.string().describe("Portal name (case-insensitive, partial match supported). Use list_portals to see available names."),
+  },
+  async ({ portalName }) => {
+    const data = await api({
+      method: "POST",
+      path: "/api/active-portal",
+      body: { portalName },
+    });
+    return textResult(data);
+  }
+);
+
+server.tool(
+  "get_active_portal",
+  "Get the currently active portal for this session, including its name, environment, and available scopes. Call this at the start of a session to confirm which portal is in context before making changes.",
+  {},
+  async () => {
+    const data = await api({ path: "/api/active-portal" });
+    return textResult(data);
+  }
+);
+
+server.tool(
+  "clear_active_portal",
+  "Clear the active portal selection. After this, all tools will require an explicit portalId again.",
+  {},
+  async () => {
+    const data = await api({ method: "DELETE", path: "/api/active-portal" });
+    return textResult(data);
+  }
+);
+
+server.tool(
   "portal_capabilities",
   "Get the capabilities (granted scopes) for a specific portal",
   { portalId: z.string().optional().describe("Portal/Hub ID. Omit to use the first connected portal.") },
@@ -213,7 +249,7 @@ server.tool(
   "List all properties for a HubSpot object type (contacts, companies, deals, tickets, etc.)",
   {
     objectType: z.string().describe("HubSpot object type: contacts, companies, deals, tickets, line_items, products, etc."),
-    portalId: z.string().optional(),
+    portalId: z.string().optional().describe("Portal ID. Omit to use the active portal set via set_active_portal."),
   },
   async ({ objectType, portalId }) => {
     const data = await api({
@@ -240,7 +276,7 @@ server.tool(
       value: z.string(),
       displayOrder: z.number().optional(),
     })).optional().describe("Options for enumeration type properties"),
-    portalId: z.string().optional(),
+    portalId: z.string().optional().describe("Portal ID. Omit to use the active portal set via set_active_portal."),
   },
   async ({ objectType, name, label, type, fieldType, groupName, description, options, portalId }) => {
     const spec: Record<string, unknown> = { name, label, type, fieldType };
@@ -275,7 +311,7 @@ server.tool(
         displayOrder: z.number().optional(),
       })).optional(),
     }).describe("Fields to update"),
-    portalId: z.string().optional(),
+    portalId: z.string().optional().describe("Portal ID. Omit to use the active portal set via set_active_portal."),
   },
   async ({ objectType, name, updates, portalId }) => {
     const data = await api({
@@ -293,7 +329,7 @@ server.tool(
   {
     objectType: z.string(),
     name: z.string().describe("Internal property name to delete"),
-    portalId: z.string().optional(),
+    portalId: z.string().optional().describe("Portal ID. Omit to use the active portal set via set_active_portal."),
   },
   async ({ objectType, name, portalId }) => {
     const data = await api({
@@ -310,7 +346,7 @@ server.tool(
   "Audit properties for an object type — find unused, low fill-rate, and review candidates",
   {
     objectType: z.string(),
-    portalId: z.string().optional(),
+    portalId: z.string().optional().describe("Portal ID. Omit to use the active portal set via set_active_portal."),
   },
   async ({ objectType, portalId }) => {
     const data = await api({
@@ -330,7 +366,7 @@ server.tool(
   "List all pipelines for deals or tickets",
   {
     objectType: z.enum(["deals", "tickets"]),
-    portalId: z.string().optional(),
+    portalId: z.string().optional().describe("Portal ID. Omit to use the active portal set via set_active_portal."),
   },
   async ({ objectType, portalId }) => {
     const data = await api({
@@ -352,7 +388,7 @@ server.tool(
       displayOrder: z.number().optional(),
       metadata: z.record(z.string(), z.string()).optional().describe("Stage metadata, e.g. { isClosed: 'true', closedWon: 'true' }"),
     })),
-    portalId: z.string().optional(),
+    portalId: z.string().optional().describe("Portal ID. Omit to use the active portal set via set_active_portal."),
   },
   async ({ objectType, label, stages, portalId }) => {
     const data = await api({
@@ -369,7 +405,7 @@ server.tool(
   "Audit pipelines — check for missing stages, too many/few stages, missing Closed Won/Lost",
   {
     objectType: z.enum(["deals", "tickets"]),
-    portalId: z.string().optional(),
+    portalId: z.string().optional().describe("Portal ID. Omit to use the active portal set via set_active_portal."),
   },
   async ({ objectType, portalId }) => {
     const data = await api({
@@ -391,7 +427,7 @@ server.tool(
     objectType: z.string().describe("contacts, companies, deals, tickets, etc."),
     id: z.string().describe("Record ID"),
     properties: z.array(z.string()).optional().describe("Specific properties to return (reduces payload)"),
-    portalId: z.string().optional(),
+    portalId: z.string().optional().describe("Portal ID. Omit to use the active portal set via set_active_portal."),
   },
   async ({ objectType, id, properties, portalId }) => {
     const query: Record<string, string | undefined> = { portalId };
@@ -416,7 +452,7 @@ server.tool(
       values: z.array(z.string()).optional(),
     })),
     properties: z.array(z.string()).optional(),
-    portalId: z.string().optional(),
+    portalId: z.string().optional().describe("Portal ID. Omit to use the active portal set via set_active_portal."),
   },
   async ({ objectType, filters, properties, portalId }) => {
     const data = await api({
@@ -434,7 +470,7 @@ server.tool(
   {
     objectType: z.string(),
     properties: z.record(z.string(), z.string()).describe("Property name-value pairs"),
-    portalId: z.string().optional(),
+    portalId: z.string().optional().describe("Portal ID. Omit to use the active portal set via set_active_portal."),
   },
   async ({ objectType, properties, portalId }) => {
     const data = await api({
@@ -453,7 +489,7 @@ server.tool(
     objectType: z.string(),
     id: z.string(),
     properties: z.record(z.string(), z.string()).describe("Property name-value pairs to update"),
-    portalId: z.string().optional(),
+    portalId: z.string().optional().describe("Portal ID. Omit to use the active portal set via set_active_portal."),
   },
   async ({ objectType, id, properties, portalId }) => {
     const data = await api({
@@ -472,7 +508,7 @@ server.tool(
     objectType: z.string(),
     records: z.array(z.record(z.string(), z.string())).describe("Array of property objects"),
     idProperty: z.string().optional().describe("Property to use for dedup (e.g. 'email' for contacts)"),
-    portalId: z.string().optional(),
+    portalId: z.string().optional().describe("Portal ID. Omit to use the active portal set via set_active_portal."),
   },
   async ({ objectType, records, idProperty, portalId }) => {
     const data = await api({
@@ -509,7 +545,7 @@ server.tool(
     objectTypeId: z.string().optional().describe("Default: 0-1 (contacts)"),
     processingType: z.enum(["DYNAMIC", "MANUAL"]).optional(),
     filterBranch: z.record(z.string(), z.unknown()).optional().describe("Filter definition for dynamic lists"),
-    portalId: z.string().optional(),
+    portalId: z.string().optional().describe("Portal ID. Omit to use the active portal set via set_active_portal."),
   },
   async ({ name, objectTypeId, processingType, filterBranch, portalId }) => {
     const data = await api({
@@ -543,7 +579,7 @@ server.tool(
   "Save a workflow spec as a local draft (does NOT deploy to HubSpot). Checks for duplicate workflows in portal and existing drafts. Deploy it later from the app UI or via deploy_workflow.",
   {
     workflow: z.record(z.string(), z.unknown()).describe("Full workflow definition matching HubSpot v4 format"),
-    portalId: z.string().optional(),
+    portalId: z.string().optional().describe("Portal ID. Omit to use the active portal set via set_active_portal."),
   },
   async ({ workflow, portalId }) => {
     const name = String(workflow.name || "Untitled Workflow");
@@ -561,7 +597,7 @@ server.tool(
   "Deploy a new workflow (always created disabled for safety). Use the v4 action format.",
   {
     workflow: z.record(z.string(), z.unknown()).describe("Full workflow definition matching HubSpot v4 format"),
-    portalId: z.string().optional(),
+    portalId: z.string().optional().describe("Portal ID. Omit to use the active portal set via set_active_portal."),
   },
   async ({ workflow, portalId }) => {
     const data = await api({
@@ -583,7 +619,7 @@ server.tool(
   {
     spec: z.record(z.string(), z.unknown()).describe("Pipeline definition with label, stages, objectType"),
     name: z.string().optional(),
-    portalId: z.string().optional(),
+    portalId: z.string().optional().describe("Portal ID. Omit to use the active portal set via set_active_portal."),
   },
   async ({ spec, name, portalId }) => {
     const draftName = name || String(spec.label || spec.name || "Untitled Pipeline");
@@ -602,7 +638,7 @@ server.tool(
   {
     spec: z.record(z.string(), z.unknown()).describe("Property definition with name, label, type, fieldType, objectType"),
     name: z.string().optional(),
-    portalId: z.string().optional(),
+    portalId: z.string().optional().describe("Portal ID. Omit to use the active portal set via set_active_portal."),
   },
   async ({ spec, name, portalId }) => {
     const draftName = name || String(spec.label || spec.name || "Untitled Property");
@@ -621,7 +657,7 @@ server.tool(
   {
     spec: z.record(z.string(), z.unknown()).describe("List definition with name, objectTypeId, processingType, optional filterBranch"),
     name: z.string().optional(),
-    portalId: z.string().optional(),
+    portalId: z.string().optional().describe("Portal ID. Omit to use the active portal set via set_active_portal."),
   },
   async ({ spec, name, portalId }) => {
     const draftName = name || String(spec.name || "Untitled List");
@@ -640,7 +676,7 @@ server.tool(
   {
     spec: z.record(z.string(), z.unknown()).describe("Template definition with resources (propertyGroups, properties, pipelines, workflows, lists, customObjects, associations)"),
     name: z.string().optional(),
-    portalId: z.string().optional(),
+    portalId: z.string().optional().describe("Portal ID. Omit to use the active portal set via set_active_portal."),
   },
   async ({ spec, name, portalId }) => {
     const draftName = name || String(spec.name || spec.id || "Untitled Template");
@@ -659,7 +695,7 @@ server.tool(
   {
     spec: z.record(z.string(), z.unknown()).describe("Custom object definition with name, labels, properties, primaryDisplayProperty"),
     name: z.string().optional(),
-    portalId: z.string().optional(),
+    portalId: z.string().optional().describe("Portal ID. Omit to use the active portal set via set_active_portal."),
   },
   async ({ spec, name, portalId }) => {
     const draftName = name || String(spec.name || "Untitled Custom Object");
@@ -698,7 +734,7 @@ server.tool(
   {
     resources: z.record(z.string(), z.unknown()).describe("TemplateResources object"),
     dryRun: z.boolean().optional().describe("If true, validates and resolves dependencies without creating anything"),
-    portalId: z.string().optional(),
+    portalId: z.string().optional().describe("Portal ID. Omit to use the active portal set via set_active_portal."),
   },
   async ({ resources, dryRun, portalId }) => {
     const data = await api({
@@ -716,7 +752,7 @@ server.tool(
   {
     templateId: z.string(),
     dryRun: z.boolean().optional(),
-    portalId: z.string().optional(),
+    portalId: z.string().optional().describe("Portal ID. Omit to use the active portal set via set_active_portal."),
   },
   async ({ templateId, dryRun, portalId }) => {
     const data = await api({
@@ -737,7 +773,7 @@ server.tool(
   "Get recent activity/change log entries",
   {
     limit: z.number().optional().describe("Number of entries to return (default 50)"),
-    portalId: z.string().optional(),
+    portalId: z.string().optional().describe("Portal ID. Omit to use the active portal set via set_active_portal."),
   },
   async ({ limit, portalId }) => {
     const data = await api({
@@ -760,7 +796,7 @@ server.tool(
     fromId: z.string(),
     toType: z.string().describe("e.g. companies"),
     toId: z.string(),
-    portalId: z.string().optional(),
+    portalId: z.string().optional().describe("Portal ID. Omit to use the active portal set via set_active_portal."),
   },
   async ({ fromType, fromId, toType, toId, portalId }) => {
     const data = await api({
@@ -782,7 +818,7 @@ server.tool(
       fromId: z.string(),
       toId: z.string(),
     })),
-    portalId: z.string().optional(),
+    portalId: z.string().optional().describe("Portal ID. Omit to use the active portal set via set_active_portal."),
   },
   async ({ fromType, toType, pairs, portalId }) => {
     const data = await api({

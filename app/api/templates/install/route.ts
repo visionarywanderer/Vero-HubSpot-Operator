@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { installTemplate, executeConfig } from "@/lib/config-executor";
 import type { TemplateResources } from "@/lib/template-types";
+import { resolvePortalId } from "@/lib/active-portal";
 
 export async function POST(request: Request) {
   try {
@@ -11,16 +12,16 @@ export async function POST(request: Request) {
       dryRun?: boolean;
     };
 
-    if (!body.portalId) {
-      return NextResponse.json({ error: "portalId is required" }, { status: 400 });
-    }
+    let portalId: string;
+    try { portalId = resolvePortalId(body.portalId); }
+    catch (e) { return NextResponse.json({ error: e instanceof Error ? e.message : "portalId required" }, { status: 400 }); }
 
     // Support both: templateId (file-based) and resources (draft-based)
     let report;
     if (body.resources) {
-      report = await executeConfig(body.portalId, body.resources, { dryRun: body.dryRun });
+      report = await executeConfig(portalId, body.resources, { dryRun: body.dryRun });
     } else if (body.templateId) {
-      report = await installTemplate(body.templateId, body.portalId, { dryRun: body.dryRun });
+      report = await installTemplate(body.templateId, portalId, { dryRun: body.dryRun });
     } else {
       return NextResponse.json({ error: "templateId or resources required" }, { status: 400 });
     }
