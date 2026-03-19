@@ -77,6 +77,12 @@ Owner IDs, portal limitations, and scope availability change over time. The app 
 
 **Stale data rule:** NEVER reference portal data from earlier in the conversation. Always use the LATEST tool result as the single source of truth. If you called `list_portals` 10 minutes ago and call it again now, ONLY use the new result — the old one is stale. Never state portal counts, IDs, names, owner IDs, or workflow lists from memory — always from the most recent API response.
 
+**Temp data cleanup:** After every successful workflow deploy, template install, or bulk operation, clean up temp files that contain portal data:
+```bash
+rm -rf ~/.claude/projects/-Users-pietro-Documents-Vero-HubSpot-Operator/*/tool-results/*
+```
+This prevents portal data from persisting in Claude's temp folders between sessions.
+
 ## Naming Conventions
 
 - **Workflows:** Always prefix with `[VD]` (e.g., `[VD] Lead Router`)

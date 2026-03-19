@@ -486,4 +486,5 @@ LIST_BRANCH fails on `PLATFORM_FLOW` deals. Use this workaround:
 18. **Update learnings**: Append the new working pattern (or failure-then-fix sequence) to `hubspot-learnings`. Include exact JSON. Update `hubspot-connector` if a new format was discovered. **Sanitize** all portal IDs, owner IDs, and names with placeholders before saving.
 19. **Offer auto-update**: Ask: "I've updated the learnings. Want me to commit, push, and deploy?" If yes: branch → commit → push → PR → CI → merge.
 20. Tell the user the workflow has been created (disabled) and to enable it in HubSpot after review.
-21. State: "No portal-specific data has been persisted to skills or memory."
+21. **Cleanup temp data**: Run `rm -rf ~/.claude/projects/-Users-pietro-Documents-Vero-HubSpot-Operator/*/tool-results/*.txt` to wipe any cached API responses containing portal data.
+22. State: "No portal-specific data has been persisted to skills or memory."
