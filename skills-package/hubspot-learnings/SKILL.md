@@ -66,6 +66,14 @@ These 15 rules prevent 90% of failures. Check every one before deploying.
 | 16 | Every level needs `type` field: enrollment=`LIST_BASED`, branches=`OR`/`AND`, filters=`PROPERTY`, operations=match `operationType`, actions=`SINGLE_CONNECTION` | WORKFLOW |
 | 17 | Actions need `actionTypeVersion: 0` and `connection: {edgeType: "STANDARD", nextActionId: "X"}` for chaining | WORKFLOW |
 | 18 | Date "set to today" → use `OBJECT_PROPERTY` with `hs_lastmodifieddate`. Static dates → epoch ms string in `STATIC_VALUE` | WORKFLOW |
+| 19 | Association enrollment: use `filterBranchType: "ASSOCIATION"` with `objectTypeId`, `associationTypeId`, `associationCategory` | WORKFLOW |
+| 20 | EVENT_BASED enrollment (property change): use `eventFilterBranches` with `UNIFIED_EVENTS`, `hs_name`/`hs_value` pattern | WORKFLOW |
+| 21 | Create Record (0-14): properties array with `targetProperty` + `value` objects. Supports STATIC_VALUE, OBJECT_PROPERTY, RELATIVE_DATETIME | WORKFLOW |
+| 22 | Create Task (0-3): needs `task_type`, `subject`, `associations[]` with ENROLLED_OBJECT, `owner_assignment`, `priority`. Requires `tasks` scope | WORKFLOW |
+| 23 | Date-Based Delay (0-35): `date` field uses OBJECT_PROPERTY, `delta` in minutes (negative = before date), `time_of_day` for specific hour | WORKFLOW |
+| 24 | Event Wait (0-29): `event_filter_branches` with UNIFIED_EVENTS, `expiration_minutes` for timeout. Branch result via STATIC_BRANCH on `hs_event_criteria_met` | WORKFLOW |
+| 25 | Set Property on associated object: add `association: { associationCategory, associationTypeId }` to 0-5 fields | WORKFLOW |
+| 26 | Re-enrollment triggers: use `reEnrollmentTriggersFilterBranches` with `hs_name`/`hs_value` pattern (STRING + ENUMERATION operators) | WORKFLOW |
 
 ---
 
