@@ -33,7 +33,7 @@ export function McpConnectionsForm() {
       const res = await fetch("/api/mcp-status");
       const data = await res.json();
       setStatus(data);
-    } catch {}
+    } catch {} // intentional: status poll failure is silent; UI retains last known state
   }, []);
 
   useEffect(() => {
@@ -55,7 +55,7 @@ export function McpConnectionsForm() {
         body: JSON.stringify({ connected: false, client: "claude-desktop" }),
       });
       await fetchStatus();
-    } catch {}
+    } catch {} // intentional: disconnect POST failure is silent; UI disconnecting state resets below
     setDisconnecting(false);
   };
 

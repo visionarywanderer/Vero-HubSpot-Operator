@@ -90,7 +90,8 @@ export default function TemplatesPage() {
         const data = (await res.json()) as { templates?: TemplateDefinition[]; packs?: PackDefinition[] };
         setTemplates(data.templates ?? []); setPacks(data.packs ?? []);
       }
-    } catch {} finally { setLoading(false); }
+    } catch {} // intentional: fetch failure is silent; loading state clears via finally and UI retains previous data
+    finally { setLoading(false); }
   }, []);
 
   const refreshDrafts = () => {
