@@ -4,6 +4,9 @@ import { getToken } from "next-auth/jwt";
 
 const PUBLIC_PREFIXES = ["/login", "/api/auth", "/api/health", "/api/portals/callback", "/_next"];
 
+// MCP protocol endpoint — handles its own Bearer token auth
+const MCP_ENDPOINT = "/api/mcp";
+
 function isMutation(method: string): boolean {
   return method === "POST" || method === "PUT" || method === "PATCH" || method === "DELETE";
 }
@@ -23,6 +26,12 @@ export async function middleware(req: NextRequest) {
   const path = req.nextUrl.pathname;
 
   if (PUBLIC_PREFIXES.some((prefix) => path.startsWith(prefix))) {
+    return NextResponse.next();
+  }
+
+  // MCP protocol endpoint — exactly /api/mcp (not /api/mcp-keys, /api/mcp-oauth, etc.)
+  // The route handler does its own Bearer token auth check
+  if (path === MCP_ENDPOINT) {
     return NextResponse.next();
   }
 
