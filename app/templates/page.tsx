@@ -90,17 +90,18 @@ export default function TemplatesPage() {
         const data = (await res.json()) as { templates?: TemplateDefinition[]; packs?: PackDefinition[] };
         setTemplates(data.templates ?? []); setPacks(data.packs ?? []);
       }
-    } catch {} finally { setLoading(false); }
+    } catch {} // intentional: fetch failure is silent; loading state clears via finally and UI retains previous data
+    finally { setLoading(false); }
   }, []);
 
-  const refreshDrafts = () => {
+  const refreshDrafts = useCallback(() => {
     if (!activePortal) { setDrafts([]); return; }
     apiGet<{ ok: true; drafts: Draft[] }>(`/api/templates/drafts?portalId=${encodeURIComponent(activePortal.id)}`)
       .then((r) => setDrafts(r.drafts ?? [])).catch(() => setDrafts([]));
-  };
+  }, [activePortal]);
 
   useEffect(() => { fetchTemplates(); }, [fetchTemplates]);
-  useEffect(() => { refreshDrafts(); }, [activePortal]);
+  useEffect(() => { refreshDrafts(); }, [refreshDrafts]);
 
   const handleInstallRequest = (templateId: string, templateName: string) => {
     if (!activePortal) return;

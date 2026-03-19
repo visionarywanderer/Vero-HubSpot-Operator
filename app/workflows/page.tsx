@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import { usePortal } from "@/hooks/usePortal";
 import { DraftsTable, type Draft } from "@/components/drafts/DraftsTable";
@@ -17,16 +17,16 @@ export default function WorkflowsPage() {
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
 
-  const refresh = () => {
+  const refresh = useCallback(() => {
     if (!activePortal) { setWorkflows([]); setDrafts([]); return; }
     const q = encodeURIComponent(activePortal.id);
     apiGet<{ ok: true; workflows: WorkflowSummary[] }>(`/api/workflows?portalId=${q}`)
       .then((r) => setWorkflows(r.workflows)).catch(() => setWorkflows([]));
     apiGet<{ ok: true; drafts: Draft[] }>(`/api/workflows/drafts?portalId=${q}`)
       .then((r) => setDrafts(r.drafts)).catch(() => setDrafts([]));
-  };
+  }, [activePortal]);
 
-  useEffect(() => { refresh(); }, [activePortal]);
+  useEffect(() => { refresh(); }, [refresh]);
 
   const handleSaveDraft = async () => {
     if (!activePortal || !specJson.trim()) return;

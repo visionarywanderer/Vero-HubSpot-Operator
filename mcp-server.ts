@@ -1019,7 +1019,7 @@ async function main() {
   process.on("SIGINT", async () => {
     console.error("\nShutting down...");
     for (const sid of Object.keys(transports)) {
-      try { await transports[sid].close(); } catch {}
+      try { await transports[sid].close(); } catch {} // intentional: transport may already be closed during shutdown
       delete transports[sid];
     }
     httpServer.close();

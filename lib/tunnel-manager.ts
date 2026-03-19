@@ -41,7 +41,7 @@ export function getTunnelState(): TunnelState {
     if (existsSync(TUNNEL_STATE_PATH)) {
       return JSON.parse(readFileSync(TUNNEL_STATE_PATH, "utf-8"));
     }
-  } catch {}
+  } catch {} // intentional: state file may not exist yet or be corrupt; default stopped state returned below
   return { url: null, status: "stopped" };
 }
 

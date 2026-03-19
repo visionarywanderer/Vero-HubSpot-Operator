@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { apiGet, apiPost } from "@/lib/api";
 import { usePortal } from "@/hooks/usePortal";
 
@@ -22,7 +22,7 @@ export default function DeploymentsPage() {
   const [status, setStatus] = useState("");
   const [rollingBack, setRollingBack] = useState<string | null>(null);
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     if (!activePortal) return;
     setLoading(true);
     try {
@@ -35,11 +35,11 @@ export default function DeploymentsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [activePortal]);
 
   useEffect(() => {
     refresh();
-  }, [activePortal?.hubId]);
+  }, [refresh]);
 
   const handleRollback = async (id: string, dryRun: boolean) => {
     setRollingBack(id);

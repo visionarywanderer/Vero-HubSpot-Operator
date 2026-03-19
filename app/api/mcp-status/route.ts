@@ -16,7 +16,7 @@ function getState(): McpConnectionState {
     if (existsSync(STATE_FILE)) {
       return JSON.parse(readFileSync(STATE_FILE, "utf-8"));
     }
-  } catch {}
+  } catch {} // intentional: state file may not exist yet or be corrupt; default disconnected state returned below
   return { connected: false, client: "", connectedAt: null, disconnectedAt: null };
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import { usePortal } from "@/hooks/usePortal";
 import { DraftsTable, type Draft } from "@/components/drafts/DraftsTable";
@@ -32,7 +32,7 @@ export default function ListsPage() {
   const [specJson, setSpecJson] = useState("");
   const [showJsonInput, setShowJsonInput] = useState(false);
 
-  const refresh = () => {
+  const refresh = useCallback(() => {
     if (!activePortal) { setLists([]); setDrafts([]); return; }
     setLoading(true);
     const q = encodeURIComponent(activePortal.id);
@@ -40,9 +40,9 @@ export default function ListsPage() {
       .then((r) => setLists(r.lists)).catch(() => setLists([])).finally(() => setLoading(false));
     apiGet<{ ok: true; drafts: Draft[] }>(`/api/lists/drafts?portalId=${q}`)
       .then((r) => setDrafts(r.drafts)).catch(() => setDrafts([]));
-  };
+  }, [activePortal]);
 
-  useEffect(() => { refresh(); }, [activePortal]);
+  useEffect(() => { refresh(); }, [refresh]);
 
   const listId = (l: ListSummary) => String(l.listId ?? l.id ?? "");
 
