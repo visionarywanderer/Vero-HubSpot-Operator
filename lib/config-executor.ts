@@ -13,6 +13,8 @@ import { changeLogger } from "@/lib/change-logger";
 import { validateTemplate } from "@/lib/constraint-validator";
 import { resolveDependencies } from "@/lib/dependency-resolver";
 import { templateStore } from "@/lib/template-store";
+import { attemptPartialWorkflowInstall } from "@/lib/partial-install";
+import { appendPartialInstallLearning } from "@/lib/skills-learner";
 
 import type {
   TemplateResources,
@@ -120,33 +122,72 @@ async function executePipeline(spec: PipelineResourceSpec): Promise<ResourceExec
 
 async function executeWorkflow(spec: WorkflowResourceSpec): Promise<ResourceExecutionResult> {
   const key = `workflow:${spec.name}`;
+
+  // Build minimal spec and call HubSpot API directly (bypass workflowEngine
+  // which adds defaults that break LIST_BRANCH workflows)
+  const specAny = spec as unknown as Record<string, unknown>;
+  const payload: Record<string, unknown> = {
+    name: spec.name,
+    type: spec.type,
+    objectTypeId: spec.objectTypeId,
+    flowType: "WORKFLOW",
+    isEnabled: false,
+    startActionId: spec.startActionId,
+    nextAvailableActionId: String(spec.nextAvailableActionId),
+    enrollmentCriteria: spec.enrollmentCriteria,
+    actions: spec.actions,
+  };
+  if (Array.isArray(specAny.dataSources)) {
+    payload.dataSources = specAny.dataSources;
+  }
+
+  // Small delay before each workflow creation to avoid HubSpot rate limits
+  await new Promise((resolve) => setTimeout(resolve, 3000));
+
+  // --- Fast path: try a full deploy first ---
   try {
-    // Build minimal spec and call HubSpot API directly (bypass workflowEngine
-    // which adds defaults that break LIST_BRANCH workflows)
-    const specAny = spec as unknown as Record<string, unknown>;
-    const payload: Record<string, unknown> = {
-      name: spec.name,
-      type: spec.type,
-      objectTypeId: spec.objectTypeId,
-      flowType: "WORKFLOW",
-      isEnabled: false,
-      startActionId: spec.startActionId,
-      nextAvailableActionId: String(spec.nextAvailableActionId),
-      enrollmentCriteria: spec.enrollmentCriteria,
-      actions: spec.actions,
-    };
-    if (Array.isArray(specAny.dataSources)) {
-      payload.dataSources = specAny.dataSources;
-    }
-    // Small delay before each workflow creation to avoid HubSpot rate limits
-    await new Promise((resolve) => setTimeout(resolve, 3000));
     const response = await hubSpotClient.post("/automation/v4/flows", payload);
     const created = response.data as { id?: string; flowId?: string };
     const flowId = created.id || created.flowId;
     return { key, type: "workflow", status: "success", hubspotId: flowId };
-  } catch (error) {
-    return { key, type: "workflow", status: "error", error: error instanceof Error ? error.message : "Failed to deploy workflow" };
+  } catch {
+    // Fall through to partial-install engine
   }
+
+  // --- Partial-install: strip unsupported actions, retry up to 5x ---
+  const partial = await attemptPartialWorkflowInstall(payload, spec.name);
+
+  // Self-improve: record new failure patterns to skills-learner
+  for (const stripped of partial.strippedActions) {
+    appendPartialInstallLearning({
+      category: "WORKFLOW",
+      workflowName: spec.name,
+      actionTypeId: stripped.actionTypeId,
+      actionLabel: stripped.label,
+      error: stripped.reason,
+    });
+  }
+
+  if (partial.status === "failed") {
+    return {
+      key,
+      type: "workflow",
+      status: "error",
+      error: partial.error ?? "Workflow deployment failed",
+      strippedActions: partial.strippedActions.length > 0 ? partial.strippedActions : undefined,
+      manualSteps: partial.manualSteps.length > 0 ? partial.manualSteps : undefined,
+    };
+  }
+
+  // Partial or full success via partial-install
+  return {
+    key,
+    type: "workflow",
+    status: partial.strippedActions.length > 0 ? "partial" : "success",
+    hubspotId: partial.flowId,
+    strippedActions: partial.strippedActions.length > 0 ? partial.strippedActions : undefined,
+    manualSteps: partial.manualSteps.length > 0 ? partial.manualSteps : undefined,
+  };
 }
 
 async function executeList(spec: ListResourceSpec): Promise<ResourceExecutionResult> {
@@ -345,8 +386,12 @@ export async function executeConfig(
 
     const completedAt = new Date().toISOString();
     const hasErrors = results.some((r) => r.status === "error");
+    const hasPartial = results.some((r) => r.status === "partial");
     const allErrors = results.length > 0 && results.every((r) => r.status === "error");
-    const status = allErrors ? "failed" : hasErrors ? "partial" : "success";
+    const status = allErrors ? "failed" : (hasErrors || hasPartial) ? "partial" : "success";
+
+    // Aggregate manual steps from all resources (e.g. partial workflow installs)
+    const allManualSteps = results.flatMap((r) => r.manualSteps ?? []);
 
     // Log the installation
     try {
@@ -373,6 +418,7 @@ export async function executeConfig(
       results,
       startedAt,
       completedAt,
+      ...(allManualSteps.length > 0 ? { manualSteps: allManualSteps } : {}),
     };
   });
 }
