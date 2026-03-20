@@ -171,7 +171,19 @@ function corsHeaders(req: Request): Record<string, string> {
     "Access-Control-Expose-Headers": "Mcp-Session-Id",
   };
 
-  if (origin.includes("claude.ai") || origin.includes("claude.com") || origin.includes("anthropic.com")) {
+  // Use URL parsing for safe origin matching (avoids substring bypass like "evil-claude.ai")
+  const isTrustedOrigin = (() => {
+    try {
+      const { hostname } = new URL(origin);
+      return hostname === "claude.ai" || hostname.endsWith(".claude.ai")
+        || hostname === "claude.com" || hostname.endsWith(".claude.com")
+        || hostname === "anthropic.com" || hostname.endsWith(".anthropic.com");
+    } catch {
+      return false;
+    }
+  })();
+
+  if (isTrustedOrigin) {
     headers["Access-Control-Allow-Origin"] = origin;
     headers["Access-Control-Allow-Credentials"] = "true";
   } else if (origin) {

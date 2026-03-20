@@ -327,6 +327,17 @@ class BaseHubSpotClient implements HubSpotClient {
     const safePath = pathname.startsWith("/") ? pathname : `/${pathname}`;
     const url = new URL(`${HUBSPOT_BASE_URL}${safePath}`);
 
+    // Post-construction SSRF guard: ensure the resolved URL still points to the expected host
+    const allowedHost = new URL(HUBSPOT_BASE_URL).hostname;
+    if (url.hostname !== allowedHost) {
+      throw new HubSpotApiError({
+        statusCode: 400,
+        category: "SSRF_BLOCKED",
+        message: `Resolved URL host '${url.hostname}' does not match expected '${allowedHost}'`,
+        correlationId: "local-ssrf-guard-post",
+      });
+    }
+
     if (method === "GET" && payload) {
       const params = payload as Record<string, unknown>;
       for (const [key, value] of Object.entries(params)) {
