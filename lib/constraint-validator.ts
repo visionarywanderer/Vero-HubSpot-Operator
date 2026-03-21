@@ -195,9 +195,14 @@ function validateEnrollmentCriteria(
 
   const c = criteria as Record<string, unknown>;
 
-  // enrollmentCriteria.type is required
+  // enrollmentCriteria.type is required and must be a known value
   if (!c.type) {
     errors.push(err(parentKey, "enrollmentCriteria.type", "Enrollment criteria must have a type"));
+  } else {
+    const validEnrollmentTypes = workflowConstraints.validEnrollmentTypes as string[];
+    if (!validEnrollmentTypes.includes(String(c.type))) {
+      errors.push(err(parentKey, "enrollmentCriteria.type", `Invalid enrollment type "${c.type}". Valid: ${validEnrollmentTypes.join(", ")}`));
+    }
   }
 
   // If there's a filterBranch, validate its structure

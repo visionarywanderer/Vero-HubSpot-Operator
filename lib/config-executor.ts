@@ -35,11 +35,13 @@ import type {
 interface ResourceCache {
   propertyGroups: Map<string, Set<string>>; // objectType → set of group names
   properties: Map<string, Set<string>>;     // objectType → set of property names
+  pipelineLabels: Map<string, Set<string>>; // objectType → set of pipeline labels
+  listNames: Set<string> | null;            // existing list names for idempotency
   workflowNames: Set<string> | null;        // existing workflow names for idempotency
 }
 
 function createResourceCache(): ResourceCache {
-  return { propertyGroups: new Map(), properties: new Map(), workflowNames: null };
+  return { propertyGroups: new Map(), properties: new Map(), pipelineLabels: new Map(), listNames: null, workflowNames: null };
 }
 
 async function getCachedPropertyGroups(cache: ResourceCache, objectType: string): Promise<Set<string>> {
@@ -56,6 +58,29 @@ async function getCachedProperties(cache: ResourceCache, objectType: string): Pr
     cache.properties.set(objectType, new Set(props.map((p) => p.name)));
   }
   return cache.properties.get(objectType)!;
+}
+
+async function getCachedPipelineLabels(cache: ResourceCache, objectType: string): Promise<Set<string>> {
+  if (!cache.pipelineLabels.has(objectType)) {
+    try {
+      const pipelines = await pipelineManager.list(objectType as "deals" | "tickets");
+      cache.pipelineLabels.set(objectType, new Set(pipelines.map((p) => String(p.label || ""))));
+    } catch {
+      cache.pipelineLabels.set(objectType, new Set());
+    }
+  }
+  return cache.pipelineLabels.get(objectType)!;
+}
+
+async function getCachedListNames(cache: ResourceCache): Promise<Set<string>> {
+  if (cache.listNames) return cache.listNames;
+  try {
+    const lists = await listManager.list();
+    cache.listNames = new Set(lists.map((l) => String(l.name || "")).filter(Boolean));
+  } catch {
+    cache.listNames = new Set();
+  }
+  return cache.listNames;
 }
 
 // --- Individual Resource Executors ---
@@ -102,17 +127,24 @@ async function executeProperty(spec: PropertyResourceSpec, cache: ResourceCache)
   }
 }
 
-async function executePipeline(spec: PipelineResourceSpec): Promise<ResourceExecutionResult> {
+async function executePipeline(spec: PipelineResourceSpec, cache: ResourceCache): Promise<ResourceExecutionResult> {
   // Auto-prefix pipeline label with [VD] if not already present
   const label = spec.label.startsWith("[VD]") ? spec.label : `[VD] ${spec.label}`;
   const key = `pipeline:${spec.objectType}:${label}`;
   try {
+    // Idempotency — check if pipeline already exists
+    const existing = await getCachedPipelineLabels(cache, spec.objectType);
+    if (existing.has(label)) {
+      return { key, type: "pipeline", status: "skipped", hubspotId: label, error: "Already exists" };
+    }
+
     const result = await pipelineManager.create(spec.objectType, {
       label,
       displayOrder: spec.displayOrder,
       stages: spec.stages,
     });
     const pipelineId = result.id || result.pipelineId;
+    existing.add(label);
     return { key, type: "pipeline", status: "success", hubspotId: pipelineId };
   } catch (error) {
     return { key, type: "pipeline", status: "error", error: error instanceof Error ? error.message : "Failed to create pipeline" };
@@ -198,9 +230,15 @@ async function executeWorkflow(spec: WorkflowResourceSpec, cache: ResourceCache)
   };
 }
 
-async function executeList(spec: ListResourceSpec): Promise<ResourceExecutionResult> {
+async function executeList(spec: ListResourceSpec, cache: ResourceCache): Promise<ResourceExecutionResult> {
   const key = `list:${spec.name}`;
   try {
+    // Idempotency — check if list already exists
+    const existing = await getCachedListNames(cache);
+    if (existing.has(spec.name)) {
+      return { key, type: "list", status: "skipped", hubspotId: spec.name, error: "Already exists" };
+    }
+
     const result = await listManager.create({
       name: spec.name,
       objectTypeId: spec.objectTypeId,
@@ -208,6 +246,7 @@ async function executeList(spec: ListResourceSpec): Promise<ResourceExecutionRes
       filterBranch: spec.filterBranch,
     });
     const listId = result.listId || result.id;
+    existing.add(spec.name);
     return { key, type: "list", status: "success", hubspotId: listId };
   } catch (error) {
     return { key, type: "list", status: "error", error: error instanceof Error ? error.message : "Failed to create list" };
@@ -262,11 +301,11 @@ async function executeResource(resource: ResolvedResource, cache: ResourceCache)
     case "property":
       return executeProperty(resource.spec as unknown as PropertyResourceSpec, cache);
     case "pipeline":
-      return executePipeline(resource.spec as unknown as PipelineResourceSpec);
+      return executePipeline(resource.spec as unknown as PipelineResourceSpec, cache);
     case "workflow":
       return executeWorkflow(resource.spec as unknown as WorkflowResourceSpec, cache);
     case "list":
-      return executeList(resource.spec as unknown as ListResourceSpec);
+      return executeList(resource.spec as unknown as ListResourceSpec, cache);
     case "customObject":
       return executeCustomObject(resource.spec as unknown as CustomObjectSpec);
     case "association":
@@ -309,7 +348,7 @@ export async function executeConfig(
       status: "failed",
       results: allValidationErrors.map((e) => ({
         key: e.resource,
-        type: "property" as const,
+        type: (e.resource.split(":")[0] || "property") as ResourceExecutionResult["type"],
         status: "error" as const,
         error: `${e.field}: ${e.message}`,
       })),
