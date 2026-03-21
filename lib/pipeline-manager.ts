@@ -94,19 +94,21 @@ async function logPipelineChange(input: {
 
 class HubSpotPipelineManager implements PipelineManager {
   async list(objectType: PipelineObjectType): Promise<Pipeline[]> {
-    const response = await hubSpotClient.get(`/crm/v3/pipelines/${objectType}`);
+    const safeType = encodeURIComponent(objectType);
+    const response = await hubSpotClient.get(`/crm/v3/pipelines/${safeType}`);
     const data = response.data as { results?: Pipeline[] };
     return data.results ?? [];
   }
 
   async create(objectType: PipelineObjectType, spec: PipelineSpec): Promise<Pipeline> {
+    const safeType = encodeURIComponent(objectType);
     // Auto-prefix pipeline label with [VD] if not already present
     const prefixedSpec = {
       ...spec,
       label: spec.label.startsWith("[VD]") ? spec.label : `[VD] ${spec.label}`,
     };
     try {
-      const response = await hubSpotClient.post(`/crm/v3/pipelines/${objectType}`, prefixedSpec);
+      const response = await hubSpotClient.post(`/crm/v3/pipelines/${safeType}`, prefixedSpec);
       const pipeline = response.data as Pipeline;
       await logPipelineChange({
         action: "create",
@@ -129,7 +131,9 @@ class HubSpotPipelineManager implements PipelineManager {
   }
 
   async get(objectType: PipelineObjectType, pipelineId: string): Promise<Pipeline> {
-    const response = await hubSpotClient.get(`/crm/v3/pipelines/${objectType}/${pipelineId}`);
+    const safeType = encodeURIComponent(objectType);
+    const safeId = encodeURIComponent(pipelineId);
+    const response = await hubSpotClient.get(`/crm/v3/pipelines/${safeType}/${safeId}`);
     return response.data as Pipeline;
   }
 
@@ -142,7 +146,7 @@ class HubSpotPipelineManager implements PipelineManager {
     }
 
     try {
-      const response = await hubSpotClient.patch(`/crm/v3/pipelines/${objectType}/${pipelineId}`, updates);
+      const response = await hubSpotClient.patch(`/crm/v3/pipelines/${encodeURIComponent(objectType)}/${encodeURIComponent(pipelineId)}`, updates);
       const after = response.data as Pipeline;
       await logPipelineChange({
         action: "update",
@@ -176,7 +180,7 @@ class HubSpotPipelineManager implements PipelineManager {
     }
 
     try {
-      await hubSpotClient.delete(`/crm/v3/pipelines/${objectType}/${pipelineId}`);
+      await hubSpotClient.delete(`/crm/v3/pipelines/${encodeURIComponent(objectType)}/${encodeURIComponent(pipelineId)}`);
       await logPipelineChange({
         action: "delete",
         recordId: pipelineId,
@@ -198,13 +202,15 @@ class HubSpotPipelineManager implements PipelineManager {
   }
 
   async listStages(objectType: PipelineObjectType, pipelineId: string): Promise<Stage[]> {
-    const response = await hubSpotClient.get(`/crm/v3/pipelines/${objectType}/${pipelineId}/stages`);
+    const safeType = encodeURIComponent(objectType);
+    const safeId = encodeURIComponent(pipelineId);
+    const response = await hubSpotClient.get(`/crm/v3/pipelines/${safeType}/${safeId}/stages`);
     const data = response.data as { results?: Stage[] };
     return data.results ?? [];
   }
 
   async addStage(objectType: PipelineObjectType, pipelineId: string, stage: StageSpec): Promise<Stage> {
-    const response = await hubSpotClient.post(`/crm/v3/pipelines/${objectType}/${pipelineId}/stages`, stage);
+    const response = await hubSpotClient.post(`/crm/v3/pipelines/${encodeURIComponent(objectType)}/${encodeURIComponent(pipelineId)}/stages`, stage);
     const created = response.data as Stage;
     await logPipelineChange({
       action: "update",
@@ -223,7 +229,7 @@ class HubSpotPipelineManager implements PipelineManager {
     updates: Partial<StageSpec>
   ): Promise<Stage> {
     const response = await hubSpotClient.patch(
-      `/crm/v3/pipelines/${objectType}/${pipelineId}/stages/${stageId}`,
+      `/crm/v3/pipelines/${encodeURIComponent(objectType)}/${encodeURIComponent(pipelineId)}/stages/${encodeURIComponent(stageId)}`,
       updates
     );
     const stage = response.data as Stage;
@@ -239,7 +245,7 @@ class HubSpotPipelineManager implements PipelineManager {
 
   async deleteStage(objectType: PipelineObjectType, pipelineId: string, stageId: string): Promise<void> {
     try {
-      await hubSpotClient.delete(`/crm/v3/pipelines/${objectType}/${pipelineId}/stages/${stageId}`);
+      await hubSpotClient.delete(`/crm/v3/pipelines/${encodeURIComponent(objectType)}/${encodeURIComponent(pipelineId)}/stages/${encodeURIComponent(stageId)}`);
       await logPipelineChange({
         action: "delete",
         recordId: `${pipelineId}:${stageId}`,

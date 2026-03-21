@@ -102,6 +102,33 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Sanitize a user-supplied value before embedding it in a URL path segment.
+ * Prevents path traversal (../) and special characters from altering the URL structure.
+ */
+function sanitizePathSegment(segment: string): string {
+  // Reject empty segments
+  if (!segment || !segment.trim()) {
+    throw new HubSpotApiError({
+      statusCode: 400,
+      category: "VALIDATION_ERROR",
+      message: "Path segment cannot be empty",
+      correlationId: "local-path-validation",
+    });
+  }
+  // Block path traversal attempts
+  if (segment.includes("..") || segment.includes("/") || segment.includes("\\")) {
+    throw new HubSpotApiError({
+      statusCode: 400,
+      category: "VALIDATION_ERROR",
+      message: `Invalid path segment: ${segment}`,
+      correlationId: "local-path-validation",
+    });
+  }
+  // URI-encode to prevent any remaining special chars from affecting URL parsing
+  return encodeURIComponent(segment);
+}
+
 function currentPortalId(): string {
   try {
     return authManager.getActivePortal().id;
@@ -523,8 +550,10 @@ class HubSpotApiClient implements ApiClient {
 
   crm = {
     get: async (objectType: string, id: string, properties?: string[]): Promise<CrmRecord> => {
+      const safeType = sanitizePathSegment(objectType);
+      const safeId = sanitizePathSegment(id);
       const params = properties?.length ? { properties: properties.join(",") } : undefined;
-      const response = await this.base.get(`/crm/v3/objects/${objectType}/${id}`, params);
+      const response = await this.base.get(`/crm/v3/objects/${safeType}/${safeId}`, params);
       return response.data as CrmRecord;
     },
 
@@ -534,9 +563,10 @@ class HubSpotApiClient implements ApiClient {
       filters: FilterGroup[],
       properties?: string[]
     ): AsyncGenerator<CrmRecord[]> {
+      const safeType = sanitizePathSegment(objectType);
       let after: string | undefined;
       do {
-        const response = await this.base.post(`/crm/v3/objects/${objectType}/search`, {
+        const response = await this.base.post(`/crm/v3/objects/${safeType}/search`, {
           filterGroups: filters,
           properties: properties ?? [],
           limit: 100,
@@ -550,8 +580,9 @@ class HubSpotApiClient implements ApiClient {
     }.bind(this),
 
     create: async (objectType: string, properties: object): Promise<CrmRecord> => {
+      const safeType = sanitizePathSegment(objectType);
       try {
-        const response = await this.base.post(`/crm/v3/objects/${objectType}`, { properties });
+        const response = await this.base.post(`/crm/v3/objects/${safeType}`, { properties });
         const record = response.data as CrmRecord;
 
         await safeLog({
@@ -582,6 +613,8 @@ class HubSpotApiClient implements ApiClient {
     },
 
     update: async (objectType: string, id: string, properties: object): Promise<CrmRecord> => {
+      const safeType = sanitizePathSegment(objectType);
+      const safeId = sanitizePathSegment(id);
       // Only fetch the properties we're about to update for the before-snapshot
       const updateKeys = Object.keys(properties);
       let before: CrmRecord | null = null;
@@ -592,7 +625,7 @@ class HubSpotApiClient implements ApiClient {
       }
 
       try {
-        const response = await this.base.patch(`/crm/v3/objects/${objectType}/${id}`, { properties });
+        const response = await this.base.patch(`/crm/v3/objects/${safeType}/${safeId}`, { properties });
         const record = response.data as CrmRecord;
 
         await safeLog({
@@ -626,6 +659,8 @@ class HubSpotApiClient implements ApiClient {
     },
 
     delete: async (objectType: string, id: string): Promise<void> => {
+      const safeType = sanitizePathSegment(objectType);
+      const safeId = sanitizePathSegment(id);
       // Only fetch minimal identifying properties for the before-snapshot
       let before: CrmRecord | null = null;
       try {
@@ -635,7 +670,7 @@ class HubSpotApiClient implements ApiClient {
       }
 
       try {
-        await this.base.delete(`/crm/v3/objects/${objectType}/${id}`);
+        await this.base.delete(`/crm/v3/objects/${safeType}/${safeId}`);
         await safeLog({
           layer: "api",
           module: "A7",
@@ -663,8 +698,9 @@ class HubSpotApiClient implements ApiClient {
     },
 
     batchCreate: async (objectType: string, records: object[]): Promise<BatchResult> => {
+      const safeType = sanitizePathSegment(objectType);
       const result = await this.base.batchProcess(records, async (batch) => {
-        const response = await this.base.post(`/crm/v3/objects/${objectType}/batch/create`, {
+        const response = await this.base.post(`/crm/v3/objects/${safeType}/batch/create`, {
           inputs: batch.map((properties) => ({ properties }))
         });
 
@@ -690,8 +726,9 @@ class HubSpotApiClient implements ApiClient {
       objectType: string,
       records: { id: string; properties: object }[]
     ): Promise<BatchResult> => {
+      const safeType = sanitizePathSegment(objectType);
       const result = await this.base.batchProcess(records, async (batch) => {
-        const response = await this.base.post(`/crm/v3/objects/${objectType}/batch/update`, {
+        const response = await this.base.post(`/crm/v3/objects/${safeType}/batch/update`, {
           inputs: batch
         });
 
@@ -714,8 +751,9 @@ class HubSpotApiClient implements ApiClient {
     },
 
     batchUpsert: async (objectType: string, records: object[], idProperty?: string): Promise<BatchResult> => {
+      const safeType = sanitizePathSegment(objectType);
       const result = await this.base.batchProcess(records, async (batch) => {
-        const response = await this.base.post(`/crm/v3/objects/${objectType}/batch/upsert`, {
+        const response = await this.base.post(`/crm/v3/objects/${safeType}/batch/upsert`, {
           inputs: batch.map((properties) => {
             const props = properties as Record<string, unknown>;
             return {
@@ -743,8 +781,9 @@ class HubSpotApiClient implements ApiClient {
     },
 
     batchRead: async (objectType: string, ids: string[], properties?: string[], idProperty?: string): Promise<BatchResult> => {
+      const safeType = sanitizePathSegment(objectType);
       const result = await this.base.batchProcess(ids, async (batch) => {
-        const response = await this.base.post(`/crm/v3/objects/${objectType}/batch/read`, {
+        const response = await this.base.post(`/crm/v3/objects/${safeType}/batch/read`, {
           inputs: batch.map((id) => ({ id })),
           properties: properties ?? [],
           ...(idProperty ? { idProperty } : {}),
@@ -758,10 +797,11 @@ class HubSpotApiClient implements ApiClient {
   };
 
   properties = {
-    list: async (objectType: string): Promise<ApiResponse> => this.base.get(`/crm/v3/properties/${objectType}`),
+    list: async (objectType: string): Promise<ApiResponse> => this.base.get(`/crm/v3/properties/${sanitizePathSegment(objectType)}`),
     create: async (objectType: string, body: object): Promise<ApiResponse> => {
+      const safeType = sanitizePathSegment(objectType);
       try {
-        const result = await this.base.post(`/crm/v3/properties/${objectType}`, body);
+        const result = await this.base.post(`/crm/v3/properties/${safeType}`, body);
         await safeLog({
           layer: "api",
           module: "C2",
@@ -788,9 +828,11 @@ class HubSpotApiClient implements ApiClient {
       }
     },
     update: async (objectType: string, name: string, body: object): Promise<ApiResponse> => {
+      const safeType = sanitizePathSegment(objectType);
+      const safeName = sanitizePathSegment(name);
       try {
-        const before = await this.base.get(`/crm/v3/properties/${objectType}/${name}`);
-        const after = await this.base.patch(`/crm/v3/properties/${objectType}/${name}`, body);
+        const before = await this.base.get(`/crm/v3/properties/${safeType}/${safeName}`);
+        const after = await this.base.patch(`/crm/v3/properties/${safeType}/${safeName}`, body);
         await safeLog({
           layer: "api",
           module: "C3",
@@ -819,9 +861,11 @@ class HubSpotApiClient implements ApiClient {
       }
     },
     delete: async (objectType: string, name: string): Promise<ApiResponse> => {
+      const safeType = sanitizePathSegment(objectType);
+      const safeName = sanitizePathSegment(name);
       try {
-        const before = await this.base.get(`/crm/v3/properties/${objectType}/${name}`);
-        const result = await this.base.delete(`/crm/v3/properties/${objectType}/${name}`);
+        const before = await this.base.get(`/crm/v3/properties/${safeType}/${safeName}`);
+        const result = await this.base.delete(`/crm/v3/properties/${safeType}/${safeName}`);
         await safeLog({
           layer: "api",
           module: "C4",
@@ -851,10 +895,14 @@ class HubSpotApiClient implements ApiClient {
 
   associations = {
     list: async (type: string, id: string, toType: string): Promise<ApiResponse> =>
-      this.base.get(`/crm/v4/objects/${type}/${id}/associations/${toType}`),
+      this.base.get(`/crm/v4/objects/${sanitizePathSegment(type)}/${sanitizePathSegment(id)}/associations/${sanitizePathSegment(toType)}`),
     create: async (type: string, id: string, toType: string, toId: string): Promise<ApiResponse> => {
+      const safeType = sanitizePathSegment(type);
+      const safeId = sanitizePathSegment(id);
+      const safeToType = sanitizePathSegment(toType);
+      const safeToId = sanitizePathSegment(toId);
       try {
-        const result = await this.base.put(`/crm/v4/objects/${type}/${id}/associations/${toType}/${toId}`, [] as unknown as object);
+        const result = await this.base.put(`/crm/v4/objects/${safeType}/${safeId}/associations/${safeToType}/${safeToId}`, [] as unknown as object);
         await safeLog({
           layer: "api",
           module: "A6",
@@ -891,7 +939,7 @@ class HubSpotApiClient implements ApiClient {
         pairs,
         async (batch) => {
           const response = await this.base.post(
-            `/crm/v4/associations/${fromType}/${toType}/batch/associate/default`,
+            `/crm/v4/associations/${sanitizePathSegment(fromType)}/${sanitizePathSegment(toType)}/batch/associate/default`,
             { inputs: batch.map((p) => ({ from: { id: p.fromId }, to: { id: p.toId } })) }
           );
           const data = response.data as { results?: unknown[] };
@@ -916,10 +964,11 @@ class HubSpotApiClient implements ApiClient {
   };
 
   pipelines = {
-    list: async (objectType: string): Promise<ApiResponse> => this.base.get(`/crm/v3/pipelines/${objectType}`),
+    list: async (objectType: string): Promise<ApiResponse> => this.base.get(`/crm/v3/pipelines/${sanitizePathSegment(objectType)}`),
     create: async (objectType: string, body: object): Promise<ApiResponse> => {
+      const safeType = sanitizePathSegment(objectType);
       try {
-        const result = await this.base.post(`/crm/v3/pipelines/${objectType}`, body);
+        const result = await this.base.post(`/crm/v3/pipelines/${safeType}`, body);
         await safeLog({
           layer: "api",
           module: "E1",
@@ -979,10 +1028,11 @@ class HubSpotApiClient implements ApiClient {
       }
     },
     update: async (flowId: string, body: object): Promise<ApiResponse> => {
+      const safeFlowId = sanitizePathSegment(flowId);
       try {
-        const before = await this.base.get(`/automation/v4/flows/${flowId}`);
+        const before = await this.base.get(`/automation/v4/flows/${safeFlowId}`);
         const payload = { ...(body as Record<string, unknown>), isEnabled: false };
-        const after = await this.base.put(`/automation/v4/flows/${flowId}`, payload);
+        const after = await this.base.put(`/automation/v4/flows/${safeFlowId}`, payload);
         await safeLog({
           layer: "api",
           module: "B4",
@@ -1011,9 +1061,10 @@ class HubSpotApiClient implements ApiClient {
       }
     },
     delete: async (flowId: string): Promise<ApiResponse> => {
+      const safeFlowId = sanitizePathSegment(flowId);
       try {
-        const before = await this.base.get(`/automation/v4/flows/${flowId}`);
-        const result = await this.base.delete(`/automation/v4/flows/${flowId}`);
+        const before = await this.base.get(`/automation/v4/flows/${safeFlowId}`);
+        const result = await this.base.delete(`/automation/v4/flows/${safeFlowId}`);
         await safeLog({
           layer: "api",
           module: "B5",

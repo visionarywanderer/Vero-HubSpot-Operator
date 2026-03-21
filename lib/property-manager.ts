@@ -85,7 +85,7 @@ async function sampleRecords(objectType: string, propertyNames: string[], limit 
   let after: string | undefined;
 
   while (records.length < limit) {
-    const response = await hubSpotClient.get(`/crm/v3/objects/${objectType}`, {
+    const response = await hubSpotClient.get(`/crm/v3/objects/${encodeURIComponent(objectType)}`, {
       limit: Math.min(100, limit - records.length),
       ...(after ? { after } : {}),
       ...(propertyNames.length ? { properties: propertyNames.join(",") } : {})
@@ -143,13 +143,14 @@ class HubSpotPropertyManager implements PropertyManager {
   }
 
   async listGroups(objectType: string): Promise<PropertyGroup[]> {
-    const response = await hubSpotClient.get(`/crm/v3/properties/${objectType}/groups`);
+    const safeType = encodeURIComponent(objectType);
+    const response = await hubSpotClient.get(`/crm/v3/properties/${safeType}/groups`);
     const data = response.data as { results?: PropertyGroup[] };
     return data.results ?? [];
   }
 
   async createGroup(objectType: string, spec: { name: string; label: string; displayOrder?: number }): Promise<PropertyGroup> {
-    const response = await hubSpotClient.post(`/crm/v3/properties/${objectType}/groups`, spec);
+    const response = await hubSpotClient.post(`/crm/v3/properties/${encodeURIComponent(objectType)}/groups`, spec);
     return response.data as PropertyGroup;
   }
 

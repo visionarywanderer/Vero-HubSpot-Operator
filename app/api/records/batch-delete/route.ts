@@ -20,7 +20,7 @@ export async function POST(req: Request) {
   try {
     await authManager.withPortal(body.portalId, async () => {
       const inputs = body.ids!.map((id) => ({ id }));
-      await hubSpotClient.post(`/crm/v3/objects/${body.objectType}/batch/archive`, { inputs });
+      await hubSpotClient.post(`/crm/v3/objects/${encodeURIComponent(body.objectType!)}/batch/archive`, { inputs });
 
       await changeLogger.log({
         portalId: body.portalId!,

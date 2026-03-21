@@ -417,7 +417,8 @@ class HubSpotWorkflowEngine implements WorkflowEngine {
 
   async get(flowId: string): Promise<WorkflowSpec> {
     await authManager.ensureValidatedForSession();
-    const response = await hubSpotClient.get(`/automation/v4/flows/${flowId}`);
+    const safeFlowId = encodeURIComponent(flowId);
+    const response = await hubSpotClient.get(`/automation/v4/flows/${safeFlowId}`);
     return response.data as WorkflowSpec;
   }
 
