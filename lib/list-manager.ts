@@ -122,7 +122,8 @@ class HubSpotListManager implements ListManager {
   }
 
   async get(listId: string): Promise<HubSpotList> {
-    const response = await hubSpotClient.get(`/crm/v3/lists/${listId}`);
+    const safeId = encodeURIComponent(listId);
+    const response = await hubSpotClient.get(`/crm/v3/lists/${safeId}`);
     return response.data as HubSpotList;
   }
 
@@ -135,7 +136,7 @@ class HubSpotListManager implements ListManager {
     }
 
     try {
-      const response = await hubSpotClient.put(`/crm/v3/lists/${listId}`, spec);
+      const response = await hubSpotClient.put(`/crm/v3/lists/${encodeURIComponent(listId)}`, spec);
       const updated = response.data as HubSpotList;
 
       await logListChange({
@@ -171,7 +172,7 @@ class HubSpotListManager implements ListManager {
     }
 
     try {
-      await hubSpotClient.delete(`/crm/v3/lists/${listId}`);
+      await hubSpotClient.delete(`/crm/v3/lists/${encodeURIComponent(listId)}`);
       await logListChange({
         action: "delete",
         listId,
@@ -194,7 +195,7 @@ class HubSpotListManager implements ListManager {
 
   async addMembers(listId: string, recordIds: string[]): Promise<void> {
     try {
-      await hubSpotClient.put(`/crm/v3/lists/${listId}/memberships/add`, {
+      await hubSpotClient.put(`/crm/v3/lists/${encodeURIComponent(listId)}/memberships/add`, {
         recordIdsToAdd: recordIds.map((id) => Number(id))
       });
 
@@ -220,7 +221,7 @@ class HubSpotListManager implements ListManager {
 
   async removeMembers(listId: string, recordIds: string[]): Promise<void> {
     try {
-      await hubSpotClient.put(`/crm/v3/lists/${listId}/memberships/remove`, {
+      await hubSpotClient.put(`/crm/v3/lists/${encodeURIComponent(listId)}/memberships/remove`, {
         recordIdsToRemove: recordIds.map((id) => Number(id))
       });
 

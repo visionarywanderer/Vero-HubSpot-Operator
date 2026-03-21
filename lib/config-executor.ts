@@ -35,11 +35,13 @@ import type {
 interface ResourceCache {
   propertyGroups: Map<string, Set<string>>; // objectType → set of group names
   properties: Map<string, Set<string>>;     // objectType → set of property names
+  pipelineLabels: Map<string, Set<string>>; // objectType → set of pipeline labels
+  listNames: Set<string> | null;            // existing list names for idempotency
   workflowNames: Set<string> | null;        // existing workflow names for idempotency
 }
 
 function createResourceCache(): ResourceCache {
-  return { propertyGroups: new Map(), properties: new Map(), workflowNames: null };
+  return { propertyGroups: new Map(), properties: new Map(), pipelineLabels: new Map(), listNames: null, workflowNames: null };
 }
 
 async function getCachedPropertyGroups(cache: ResourceCache, objectType: string): Promise<Set<string>> {
@@ -56,6 +58,29 @@ async function getCachedProperties(cache: ResourceCache, objectType: string): Pr
     cache.properties.set(objectType, new Set(props.map((p) => p.name)));
   }
   return cache.properties.get(objectType)!;
+}
+
+async function getCachedPipelineLabels(cache: ResourceCache, objectType: string): Promise<Set<string>> {
+  if (!cache.pipelineLabels.has(objectType)) {
+    try {
+      const pipelines = await pipelineManager.list(objectType as "deals" | "tickets");
+      cache.pipelineLabels.set(objectType, new Set(pipelines.map((p) => String(p.label || ""))));
+    } catch {
+      cache.pipelineLabels.set(objectType, new Set());
+    }
+  }
+  return cache.pipelineLabels.get(objectType)!;
+}
+
+async function getCachedListNames(cache: ResourceCache): Promise<Set<string>> {
+  if (cache.listNames) return cache.listNames;
+  try {
+    const lists = await listManager.list();
+    cache.listNames = new Set(lists.map((l) => String(l.name || "")).filter(Boolean));
+  } catch {
+    cache.listNames = new Set();
+  }
+  return cache.listNames;
 }
 
 // --- Individual Resource Executors ---
@@ -102,17 +127,24 @@ async function executeProperty(spec: PropertyResourceSpec, cache: ResourceCache)
   }
 }
 
-async function executePipeline(spec: PipelineResourceSpec): Promise<ResourceExecutionResult> {
+async function executePipeline(spec: PipelineResourceSpec, cache: ResourceCache): Promise<ResourceExecutionResult> {
   // Auto-prefix pipeline label with [VD] if not already present
   const label = spec.label.startsWith("[VD]") ? spec.label : `[VD] ${spec.label}`;
   const key = `pipeline:${spec.objectType}:${label}`;
   try {
+    // Idempotency — check if pipeline already exists
+    const existing = await getCachedPipelineLabels(cache, spec.objectType);
+    if (existing.has(label)) {
+      return { key, type: "pipeline", status: "skipped", hubspotId: label, error: "Already exists" };
+    }
+
     const result = await pipelineManager.create(spec.objectType, {
       label,
       displayOrder: spec.displayOrder,
       stages: spec.stages,
     });
     const pipelineId = result.id || result.pipelineId;
+    existing.add(label);
     return { key, type: "pipeline", status: "success", hubspotId: pipelineId };
   } catch (error) {
     return { key, type: "pipeline", status: "error", error: error instanceof Error ? error.message : "Failed to create pipeline" };
@@ -122,13 +154,26 @@ async function executePipeline(spec: PipelineResourceSpec): Promise<ResourceExec
 async function getCachedWorkflowNames(cache: ResourceCache): Promise<Set<string>> {
   if (cache.workflowNames) return cache.workflowNames;
   try {
-    const response = await hubSpotClient.get("/automation/v4/flows", { limit: 500 });
-    const data = response.data as { results?: Array<{ name?: string }> };
-    cache.workflowNames = new Set(
-      (data.results || []).map((w) => String(w.name || "")).filter(Boolean)
-    );
+    const names: string[] = [];
+    let after: string | undefined;
+
+    // Paginate through all workflows instead of relying on a single large limit
+    do {
+      const params: Record<string, unknown> = { limit: 100 };
+      if (after) params.after = after;
+      const response = await hubSpotClient.get("/automation/v4/flows", params);
+      const data = response.data as { results?: Array<{ name?: string }>; paging?: { next?: { after?: string } } };
+      for (const w of data.results || []) {
+        const name = String(w.name || "");
+        if (name) names.push(name);
+      }
+      after = data.paging?.next?.after;
+    } while (after);
+
+    cache.workflowNames = new Set(names);
   } catch {
-    cache.workflowNames = new Set();
+    // Don't cache on error — let the next caller retry
+    return new Set();
   }
   return cache.workflowNames;
 }
@@ -197,9 +242,15 @@ async function executeWorkflow(spec: WorkflowResourceSpec, cache: ResourceCache)
   };
 }
 
-async function executeList(spec: ListResourceSpec): Promise<ResourceExecutionResult> {
+async function executeList(spec: ListResourceSpec, cache: ResourceCache): Promise<ResourceExecutionResult> {
   const key = `list:${spec.name}`;
   try {
+    // Idempotency — check if list already exists
+    const existing = await getCachedListNames(cache);
+    if (existing.has(spec.name)) {
+      return { key, type: "list", status: "skipped", hubspotId: spec.name, error: "Already exists" };
+    }
+
     const result = await listManager.create({
       name: spec.name,
       objectTypeId: spec.objectTypeId,
@@ -207,6 +258,7 @@ async function executeList(spec: ListResourceSpec): Promise<ResourceExecutionRes
       filterBranch: spec.filterBranch,
     });
     const listId = result.listId || result.id;
+    existing.add(spec.name);
     return { key, type: "list", status: "success", hubspotId: listId };
   } catch (error) {
     return { key, type: "list", status: "error", error: error instanceof Error ? error.message : "Failed to create list" };
@@ -261,11 +313,11 @@ async function executeResource(resource: ResolvedResource, cache: ResourceCache)
     case "property":
       return executeProperty(resource.spec as unknown as PropertyResourceSpec, cache);
     case "pipeline":
-      return executePipeline(resource.spec as unknown as PipelineResourceSpec);
+      return executePipeline(resource.spec as unknown as PipelineResourceSpec, cache);
     case "workflow":
       return executeWorkflow(resource.spec as unknown as WorkflowResourceSpec, cache);
     case "list":
-      return executeList(resource.spec as unknown as ListResourceSpec);
+      return executeList(resource.spec as unknown as ListResourceSpec, cache);
     case "customObject":
       return executeCustomObject(resource.spec as unknown as CustomObjectSpec);
     case "association":
@@ -277,10 +329,25 @@ async function executeResource(resource: ResolvedResource, cache: ResourceCache)
 
 // --- Core Execution ---
 
+export interface ProgressUpdate {
+  /** Current resource being processed */
+  resource: string;
+  /** 0-100 percent complete */
+  percent: number;
+  /** Total resources to process */
+  total: number;
+  /** Resources completed so far */
+  completed: number;
+  /** Current status */
+  status: "processing" | "success" | "error" | "skipped";
+}
+
+export type ProgressCallback = (update: ProgressUpdate) => void;
+
 export async function executeConfig(
   portalId: string,
   resources: TemplateResources,
-  options?: { dryRun?: boolean; templateId?: string }
+  options?: { dryRun?: boolean; templateId?: string; onProgress?: ProgressCallback }
 ): Promise<ExecutionReport> {
   const startedAt = new Date().toISOString();
 
@@ -308,7 +375,7 @@ export async function executeConfig(
       status: "failed",
       results: allValidationErrors.map((e) => ({
         key: e.resource,
-        type: "property" as const,
+        type: (e.resource.split(":")[0] || "property") as ResourceExecutionResult["type"],
         status: "error" as const,
         error: `${e.field}: ${e.message}`,
       })),
@@ -342,6 +409,21 @@ export async function executeConfig(
     const results: ResourceExecutionResult[] = [];
     const failedKeys = new Set<string>();
     const cache = createResourceCache();
+    const totalResources = sorted.length;
+    const onProgress = options?.onProgress;
+
+    function emitProgress(key: string, status: ProgressUpdate["status"]) {
+      if (onProgress) {
+        const completed = results.length;
+        onProgress({
+          resource: key,
+          percent: totalResources > 0 ? Math.round((completed / totalResources) * 100) : 100,
+          total: totalResources,
+          completed,
+          status,
+        });
+      }
+    }
 
     // Group sorted resources into execution tiers: resources with all
     // dependencies already executed can run concurrently within a tier.
@@ -362,6 +444,7 @@ export async function executeConfig(
             status: "skipped",
             error: "Skipped due to dependency failure",
           });
+          emitProgress(resource.key, "skipped");
           failedKeys.add(resource.key);
           completedKeys.add(resource.key);
           continue;
@@ -380,6 +463,7 @@ export async function executeConfig(
         const [next, ...rest] = deferred;
         const result = await executeResource(next, cache);
         results.push(result);
+        emitProgress(next.key, result.status === "error" ? "error" : "success");
         if (result.status === "error") failedKeys.add(next.key);
         completedKeys.add(next.key);
         remaining = rest;
@@ -397,16 +481,25 @@ export async function executeConfig(
       );
       for (let i = 0; i < nonWorkflowResources.length; i++) {
         results.push(nonWfResults[i]);
+        emitProgress(nonWorkflowResources[i].key, nonWfResults[i].status === "error" ? "error" : "success");
         if (nonWfResults[i].status === "error") failedKeys.add(nonWorkflowResources[i].key);
         completedKeys.add(nonWorkflowResources[i].key);
       }
 
-      // Workflow resources: execute sequentially to avoid rate limits
-      for (const wfResource of workflowResources) {
-        const wfResult = await executeResource(wfResource, cache);
-        results.push(wfResult);
-        if (wfResult.status === "error") failedKeys.add(wfResource.key);
-        completedKeys.add(wfResource.key);
+      // Workflow resources: execute with concurrency limit of 3
+      // (each workflow already has a 3-second internal delay, so limited parallelism is safe)
+      const WF_CONCURRENCY = 3;
+      for (let i = 0; i < workflowResources.length; i += WF_CONCURRENCY) {
+        const batch = workflowResources.slice(i, i + WF_CONCURRENCY);
+        const batchResults = await Promise.all(
+          batch.map((resource) => executeResource(resource, cache))
+        );
+        for (let j = 0; j < batch.length; j++) {
+          results.push(batchResults[j]);
+          emitProgress(batch[j].key, batchResults[j].status === "error" ? "error" : "success");
+          if (batchResults[j].status === "error") failedKeys.add(batch[j].key);
+          completedKeys.add(batch[j].key);
+        }
       }
 
       remaining = deferred;

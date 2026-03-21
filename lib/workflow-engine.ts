@@ -5,6 +5,7 @@ import { changeLogger } from "@/lib/change-logger";
 import { canWriteInEnvironment, missingScopesFor } from "@/lib/safety-governance";
 import { attemptPartialWorkflowInstall, isActionTypeError, preStripBrokenActions, type PartialWorkflowInstallResult } from "@/lib/partial-install";
 import { appendPartialInstallLearning } from "@/lib/skills-learner";
+import { validateWorkflowForDeploy } from "@/lib/constraint-validator";
 
 export type WorkflowSpec = Record<string, unknown>;
 
@@ -13,9 +14,13 @@ export interface ValidationResult {
   errors: string[];
 }
 
+export type DeployErrorCategory = "governance" | "validation" | "constraint" | "auth" | "rate_limit" | "action_type" | "api" | "unknown";
+
 export interface DeployResult {
   success: boolean;
   errors?: string[];
+  /** Category of the failure for programmatic handling */
+  errorCategory?: DeployErrorCategory;
   flowId?: string;
   revisionId?: string;
   name?: string;
@@ -179,12 +184,18 @@ class HubSpotWorkflowEngine implements WorkflowEngine {
   async deploy(spec: WorkflowSpec): Promise<DeployResult> {
     const governanceErrors = await this.enforceWriteGovernance("B2");
     if (governanceErrors.length > 0) {
-      return { success: false, errors: governanceErrors };
+      return { success: false, errors: governanceErrors, errorCategory: "governance" };
     }
 
     const validation = this.validate(spec);
     if (!validation.valid) {
-      return { success: false, errors: validation.errors };
+      return { success: false, errors: validation.errors, errorCategory: "validation" };
+    }
+
+    // Run constraint validation (action type checks, enrollment criteria, required fields)
+    const constraintErrors = validateWorkflowForDeploy(spec as Record<string, unknown>);
+    if (constraintErrors.length > 0) {
+      return { success: false, errors: constraintErrors.map((e) => `${e.field}: ${e.message}`), errorCategory: "constraint" };
     }
 
     const safeSpec = normalizeWorkflowDefaults(spec);
@@ -193,7 +204,7 @@ class HubSpotWorkflowEngine implements WorkflowEngine {
     const flowId = created.id || created.flowId;
 
     if (!flowId) {
-      return { success: false, errors: ["Deploy failed: flowId missing in response"] };
+      return { success: false, errors: ["Deploy failed: flowId missing in response"], errorCategory: "api" };
     }
 
     const deployed = await this.get(flowId).catch(() => ({} as WorkflowSpec));
@@ -235,6 +246,12 @@ class HubSpotWorkflowEngine implements WorkflowEngine {
       return { success: false, errors: validation.errors };
     }
 
+    // Run constraint validation (action type checks, enrollment criteria, required fields)
+    const constraintErrors = validateWorkflowForDeploy(spec as Record<string, unknown>);
+    if (constraintErrors.length > 0) {
+      return { success: false, errors: constraintErrors.map((e) => `${e.field}: ${e.message}`) };
+    }
+
     const safeSpec = normalizeWorkflowDefaults(spec);
     const workflowName = String(safeSpec.name || "Unnamed Workflow");
     const portalId = authManager.getActivePortal().id;
@@ -256,7 +273,7 @@ class HubSpotWorkflowEngine implements WorkflowEngine {
       const flowId = created.id || created.flowId;
 
       if (!flowId) {
-        return { success: false, errors: ["Deploy failed: flowId missing in response"] };
+        return { success: false, errors: ["Deploy failed: flowId missing in response"], errorCategory: "api" };
       }
 
       const deployed = await this.get(flowId).catch(() => ({} as WorkflowSpec));
@@ -314,6 +331,7 @@ class HubSpotWorkflowEngine implements WorkflowEngine {
       return {
         success: false,
         errors: [errorMessage],
+        errorCategory: "api" as DeployErrorCategory,
         ...(preStrippedActions.length > 0 ? {
           partial: {
             status: "failed" as const,
@@ -355,6 +373,7 @@ class HubSpotWorkflowEngine implements WorkflowEngine {
       return {
         success: false,
         errors: [partial.error ?? "Workflow deployment failed after partial-install attempts"],
+        errorCategory: "action_type",
         partial,
       };
     }
@@ -386,7 +405,7 @@ class HubSpotWorkflowEngine implements WorkflowEngine {
       };
     }
 
-    return { success: false, errors: ["Partial install did not return a flowId"], partial };
+    return { success: false, errors: ["Partial install did not return a flowId"], errorCategory: "api", partial };
   }
 
   async list(): Promise<WorkflowSummary[]> {
@@ -398,19 +417,20 @@ class HubSpotWorkflowEngine implements WorkflowEngine {
 
   async get(flowId: string): Promise<WorkflowSpec> {
     await authManager.ensureValidatedForSession();
-    const response = await hubSpotClient.get(`/automation/v4/flows/${flowId}`);
+    const safeFlowId = encodeURIComponent(flowId);
+    const response = await hubSpotClient.get(`/automation/v4/flows/${safeFlowId}`);
     return response.data as WorkflowSpec;
   }
 
   async update(flowId: string, spec: WorkflowSpec): Promise<DeployResult> {
     const governanceErrors = await this.enforceWriteGovernance("B4");
     if (governanceErrors.length > 0) {
-      return { success: false, errors: governanceErrors };
+      return { success: false, errors: governanceErrors, errorCategory: "governance" };
     }
 
     const validation = this.validate(spec);
     if (!validation.valid) {
-      return { success: false, errors: validation.errors };
+      return { success: false, errors: validation.errors, errorCategory: "validation" };
     }
 
     const safeSpec = normalizeWorkflowDefaults(spec);

@@ -2,12 +2,9 @@ import { NextResponse } from "next/server";
 import { isAuthenticated } from "@/lib/api-auth";
 import { authManager } from "@/lib/auth-manager";
 import { workflowEngine } from "@/lib/workflow-engine";
+import { portalFromUrl, type RouteContext } from "@/lib/route-helpers";
 
-function portalFromUrl(req: Request): string | null {
-  return new URL(req.url).searchParams.get("portalId");
-}
-
-export async function GET(req: Request, context: any) {
+export async function GET(req: Request, context: RouteContext<{ flowId: string }>) {
   const params = await context.params;
   if (!(await isAuthenticated())) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
@@ -25,7 +22,7 @@ export async function GET(req: Request, context: any) {
   }
 }
 
-export async function PUT(req: Request, context: any) {
+export async function PUT(req: Request, context: RouteContext<{ flowId: string }>) {
   const params = await context.params;
   if (!(await isAuthenticated())) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
@@ -38,7 +35,7 @@ export async function PUT(req: Request, context: any) {
   return NextResponse.json({ ok: true, result });
 }
 
-export async function DELETE(req: Request, context: any) {
+export async function DELETE(req: Request, context: RouteContext<{ flowId: string }>) {
   const params = await context.params;
   if (!(await isAuthenticated())) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 

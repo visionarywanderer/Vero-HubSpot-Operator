@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { isAuthenticated } from "@/lib/api-auth";
 import { authManager } from "@/lib/auth-manager";
 import { listManager } from "@/lib/list-manager";
+import type { RouteContext } from "@/lib/route-helpers";
 
-export async function PUT(req: Request, context: any) {
+export async function PUT(req: Request, context: RouteContext<{ listId: string }>) {
   const params = await context.params;
   if (!(await isAuthenticated())) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 

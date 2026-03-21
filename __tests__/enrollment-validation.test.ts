@@ -10,7 +10,7 @@ describe("validateWorkflowForDeploy", () => {
     startActionId: "1",
     nextAvailableActionId: "3",
     enrollmentCriteria: {
-      type: "STATIC_LIST",
+      type: "EVENT_BASED",
       filterBranch: {
         filterBranchType: "OR",
         filterBranches: [
@@ -138,7 +138,7 @@ describe("validateWorkflowForDeploy", () => {
       const errors = validateWorkflowForDeploy({
         ...validWorkflow,
         enrollmentCriteria: {
-          type: "STATIC_LIST",
+          type: "EVENT_BASED",
           filterBranch: {
             filters: [],
           },
@@ -151,7 +151,7 @@ describe("validateWorkflowForDeploy", () => {
       const errors = validateWorkflowForDeploy({
         ...validWorkflow,
         enrollmentCriteria: {
-          type: "STATIC_LIST",
+          type: "EVENT_BASED",
           filterBranch: {
             filterBranchType: "OR",
             filterBranchOperator: "NAND",
@@ -159,6 +159,17 @@ describe("validateWorkflowForDeploy", () => {
         },
       });
       expect(errors.some((e) => e.field.includes("filterBranchOperator"))).toBe(true);
+    });
+
+    it("fails when enrollment type is invalid", () => {
+      const errors = validateWorkflowForDeploy({
+        ...validWorkflow,
+        enrollmentCriteria: {
+          type: "STATIC_LIST",
+          filterBranch: { filterBranchType: "OR" },
+        },
+      });
+      expect(errors.some((e) => e.field.includes("enrollmentCriteria.type"))).toBe(true);
     });
   });
 });

@@ -26,10 +26,6 @@ const MODULE_SCOPE_MAP: Record<string, string[]> = {
   "F1-F6": []
 };
 
-export function isWriteModule(moduleCode: string): boolean {
-  return ["A2", "A3", "A4", "A5", "A6", "A7", "B1-B2", "B2", "B4", "B5", "C2", "D1-D2", "E1-E2", "F1-F6"].includes(moduleCode);
-}
-
 export function requiredScopesFor(moduleCode: string, _layer: Layer): string[] {
   return MODULE_SCOPE_MAP[moduleCode] ?? [];
 }
@@ -52,11 +48,6 @@ export function canWriteInEnvironment(args: {
     };
   }
   return { allowed: true };
-}
-
-export function isDeleteOperation(moduleCode: string, description: string): boolean {
-  const lower = description.toLowerCase();
-  return moduleCode === "A7" || moduleCode === "B5" || /\b(delete|remove)\b/.test(lower);
 }
 
 export function sanitizeSensitiveText(input: string): string {

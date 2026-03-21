@@ -70,6 +70,12 @@ const MAX_ATTEMPTS = 5;
 // Action types known to fail on most portals (silent 500s, missing scopes)
 const UNIVERSALLY_BROKEN_ACTION_TYPES = new Set(["0-9", "0-11"]);
 
+// Deprecated action types that should be auto-replaced before deployment
+const DEPRECATED_ACTION_REPLACEMENTS: Record<string, string> = {
+  "0-7": "0-3",        // Old Create task → new Create task
+  "0-13": "0-63809083", // Alter list membership → Add to static list
+};
+
 // ---------------------------------------------------------------------------
 // Error Classification — distinguish action-type errors from auth/scope/rate errors
 // ---------------------------------------------------------------------------
@@ -103,26 +109,32 @@ export function isActionTypeError(error: unknown): boolean {
   }
 
   // HubSpot sometimes returns generic 400/500 for action type issues.
-  // If it's a 400 or 500 and we can't determine the cause, be conservative
-  // and allow partial-install to try (it will fail fast if no actions to strip).
+  // Be selective: only allow partial-install for errors likely caused by action types.
   if (error instanceof HubSpotApiError) {
-    if (error.statusCode === 400 || error.statusCode >= 500) {
-      // Check if the error mentions specific field validation issues
-      // that are NOT about action types — these should not trigger partial install
-      const structuralErrors = [
-        /required\s+field/i,
-        /invalid\s+(?:type|format|value)/i,
-        /missing\s+(?:required|property)/i,
-        /enrollment/i,
-        /filter/i,
-      ];
-      for (const pattern of structuralErrors) {
-        if (pattern.test(lowerMessage) && !actionTypePatterns.some(p => p.test(message))) {
-          return false;
-        }
+    // Check if the error mentions specific structural issues that are NOT about action types
+    const structuralErrors = [
+      /required\s+field/i,
+      /invalid\s+(?:type|format|value)/i,
+      /missing\s+(?:required|property)/i,
+      /enrollment/i,
+      /filter/i,
+      /nextAvailableActionId/i,
+      /startActionId/i,
+      /objectTypeId/i,
+      /malformed/i,
+      /parse\s*error/i,
+    ];
+    for (const pattern of structuralErrors) {
+      if (pattern.test(lowerMessage) && !actionTypePatterns.some(p => p.test(message))) {
+        return false;
       }
-      // For unrecognized 400/500 errors, allow partial install to try
-      return true;
+    }
+    // For 400s with no identifiable cause, allow partial install to try
+    // (it will fail fast if no actions can be identified to strip)
+    if (error.statusCode === 400) return true;
+    // For 500s, only retry if the message contains action-related hints
+    if (error.statusCode >= 500) {
+      return /action/i.test(lowerMessage);
     }
   }
 
@@ -180,10 +192,25 @@ export function preStripBrokenActions(
   const brokenTypes = getKnownBrokenActionTypes(portalId);
   const actions = (Array.isArray(payload.actions) ? payload.actions : []) as WorkflowAction[];
 
+  // Phase 1: Auto-replace deprecated action types with their modern equivalents
+  let hasReplacements = false;
+  const updatedActions = actions.map((action) => {
+    const typeId = String(action.actionTypeId ?? "");
+    if (typeId && typeId in DEPRECATED_ACTION_REPLACEMENTS) {
+      hasReplacements = true;
+      return { ...action, actionTypeId: DEPRECATED_ACTION_REPLACEMENTS[typeId] };
+    }
+    return action;
+  });
+
+  const workingPayload = hasReplacements ? { ...payload, actions: updatedActions } : payload;
+  const currentActions = (Array.isArray(workingPayload.actions) ? workingPayload.actions : []) as WorkflowAction[];
+
+  // Phase 2: Strip known broken action types
   const actionsToRemove = new Set<string>();
   const strippedActions: StrippedAction[] = [];
 
-  for (const action of actions) {
+  for (const action of currentActions) {
     const typeId = String(action.actionTypeId ?? "");
     if (typeId && brokenTypes.has(typeId)) {
       const actionId = String(action.actionId ?? "");
@@ -199,10 +226,10 @@ export function preStripBrokenActions(
   }
 
   if (actionsToRemove.size === 0) {
-    return { payload, strippedActions: [], manualSteps: [] };
+    return { payload: workingPayload, strippedActions: [], manualSteps: [] };
   }
 
-  const cleaned = stripActionsAndRelink(payload, actionsToRemove);
+  const cleaned = stripActionsAndRelink(workingPayload, actionsToRemove);
 
   return { payload: cleaned, strippedActions, manualSteps: buildManualSteps(strippedActions) };
 }
@@ -340,10 +367,15 @@ export function parseHubSpotWorkflowError(error: unknown): {
     }
   }
 
-  // --- Strategy 2: Parse top-level message (fallback) ---
-  extractTypeIds(topMessage, problematicActionTypeIds);
+  // --- Strategy 2: Parse top-level message (fallback — only if strategy 1 found nothing) ---
+  if (problematicActionTypeIds.size === 0 && problematicActionIndices.size === 0) {
+    extractTypeIds(topMessage, problematicActionTypeIds);
+  }
 
-  // --- Strategy 3: Parse HubSpot context object ---
+  // --- Strategy 3: Parse HubSpot context object (fallback — only if still nothing) ---
+  if (problematicActionTypeIds.size > 0 || problematicActionIndices.size > 0) {
+    return { problematicActionTypeIds, problematicActionIndices, rawMessage };
+  }
   const context = data?.context || hsError.context;
   if (context && typeof context === "object") {
     const ctxRecord = context as Record<string, unknown>;

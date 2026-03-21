@@ -1,4 +1,6 @@
 import { apiClient, hubSpotClient } from "@/lib/api-client";
+import { getCachedProperties, setCachedProperties, invalidatePropertyCache } from "@/lib/property-cache";
+import { authManager } from "@/lib/auth-manager";
 
 export interface Property {
   name: string;
@@ -83,7 +85,7 @@ async function sampleRecords(objectType: string, propertyNames: string[], limit 
   let after: string | undefined;
 
   while (records.length < limit) {
-    const response = await hubSpotClient.get(`/crm/v3/objects/${objectType}`, {
+    const response = await hubSpotClient.get(`/crm/v3/objects/${encodeURIComponent(objectType)}`, {
       limit: Math.min(100, limit - records.length),
       ...(after ? { after } : {}),
       ...(propertyNames.length ? { properties: propertyNames.join(",") } : {})
@@ -103,33 +105,52 @@ async function sampleRecords(objectType: string, propertyNames: string[], limit 
 
 class HubSpotPropertyManager implements PropertyManager {
   async list(objectType: string): Promise<Property[]> {
-    const response = await apiClient.properties.list(objectType);
-    const data = response.data as { results?: Property[] };
-    return data.results ?? [];
+    // Check session-scoped cache first (5-min TTL)
+    try {
+      const portalId = authManager.getActivePortal().id;
+      const cached = getCachedProperties(portalId, objectType);
+      if (cached) return cached;
+
+      const response = await apiClient.properties.list(objectType);
+      const data = response.data as { results?: Property[] };
+      const results = data.results ?? [];
+      setCachedProperties(portalId, objectType, results);
+      return results;
+    } catch {
+      // Fallback without caching if portal context not available
+      const response = await apiClient.properties.list(objectType);
+      const data = response.data as { results?: Property[] };
+      return data.results ?? [];
+    }
   }
 
   async create(objectType: string, spec: PropertySpec): Promise<Property> {
     const response = await apiClient.properties.create(objectType, spec);
+    // Invalidate cache so subsequent list() calls include the new property
+    try { invalidatePropertyCache(authManager.getActivePortal().id, objectType); } catch { /* ok */ }
     return response.data as Property;
   }
 
   async update(objectType: string, name: string, updates: Partial<PropertySpec>): Promise<Property> {
     const response = await apiClient.properties.update(objectType, name, updates);
+    try { invalidatePropertyCache(authManager.getActivePortal().id, objectType); } catch { /* ok */ }
     return response.data as Property;
   }
 
   async delete(objectType: string, name: string): Promise<void> {
     await apiClient.properties.delete(objectType, name);
+    try { invalidatePropertyCache(authManager.getActivePortal().id, objectType); } catch { /* ok */ }
   }
 
   async listGroups(objectType: string): Promise<PropertyGroup[]> {
-    const response = await hubSpotClient.get(`/crm/v3/properties/${objectType}/groups`);
+    const safeType = encodeURIComponent(objectType);
+    const response = await hubSpotClient.get(`/crm/v3/properties/${safeType}/groups`);
     const data = response.data as { results?: PropertyGroup[] };
     return data.results ?? [];
   }
 
   async createGroup(objectType: string, spec: { name: string; label: string; displayOrder?: number }): Promise<PropertyGroup> {
-    const response = await hubSpotClient.post(`/crm/v3/properties/${objectType}/groups`, spec);
+    const response = await hubSpotClient.post(`/crm/v3/properties/${encodeURIComponent(objectType)}/groups`, spec);
     return response.data as PropertyGroup;
   }
 
