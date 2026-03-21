@@ -128,7 +128,8 @@ async function getCachedWorkflowNames(cache: ResourceCache): Promise<Set<string>
       (data.results || []).map((w) => String(w.name || "")).filter(Boolean)
     );
   } catch {
-    cache.workflowNames = new Set();
+    // Don't cache on error — let the next caller retry
+    return new Set();
   }
   return cache.workflowNames;
 }
