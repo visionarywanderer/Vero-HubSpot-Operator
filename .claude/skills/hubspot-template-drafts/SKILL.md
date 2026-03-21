@@ -322,15 +322,23 @@ Standard association pairs: contacts↔companies, contacts↔deals, contacts↔t
 
 ## Procedure
 
-1. Ask the user what kind of CRM setup they need
-2. Design the template with appropriate resources for their use case
-3. Follow ALL format rules from the individual resource skills:
+1. **⚡ FIRST: Read `hubspot-learnings` skill** — cross-check your planned template against ALL known patterns and failures. Do NOT skip this step.
+2. **Read `docs/workflow-pattern-catalog.md`** — for any workflows in the template, use the exact JSON patterns from the catalog as your starting point.
+3. Ask the user what kind of CRM setup they need.
+4. Design the template with appropriate resources for their use case.
+5. Follow ALL format rules from the individual resource skills:
    - Properties: type/fieldType matrix, naming constraints
    - Pipelines: Closed Won/Lost for deals, metadata as strings
-   - Workflows: v4 format, numeric action IDs, `type`/`actionTypeVersion` on every action
+   - **Workflows: Use patterns from the catalog (enrollment 1A-1G, actions 3A-3L, branching 4A-4E). Follow the 4-tier failure recovery from `hubspot-workflow-drafts` skill if any workflow in the template fails.**
    - Lists: filterBranch structure, correct operationType for property types
-4. Ensure dependency order: groups → properties → pipelines → lists → workflows → associations
-5. **Pre-flight check**: Cross-reference each resource against its skill's checklist
-6. Call `save_template_draft` MCP tool with the spec
-7. Tell the user to install from the Templates page
-8. If install partially fails, identify which resources failed and fix those
+6. Ensure dependency order: groups → properties → pipelines → lists → workflows → associations.
+7. **Pre-flight check**: Cross-reference each resource against its skill's checklist.
+8. Call `save_template_draft` or `execute_config` MCP tool with the spec.
+9. If install partially fails (especially workflows), use the same 4-tier recovery:
+   - Tier 1: Fix from learnings patterns
+   - Tier 2: Check HubSpot docs
+   - Tier 3: Reverse-engineer from portal workflows via `get_workflow`
+   - Tier 4: Partial install — deploy what works, surface `manualSteps` for the rest
+10. **Update learnings** with any new patterns discovered. Sanitize all portal data.
+11. **Cleanup temp data**: Run `rm -rf ~/.claude/projects/-Users-pietro-Documents-Vero-HubSpot-Operator/*/tool-results/*.txt` to wipe any cached API responses containing portal data.
+12. State: "No portal-specific data has been persisted to skills or memory."

@@ -15,8 +15,9 @@
  * The caller is responsible for logging new failure patterns to skills-learner.
  */
 
-import { hubSpotClient } from "@/lib/api-client";
+import { hubSpotClient, HubSpotApiError } from "@/lib/api-client";
 import type { ManualStep, StrippedAction } from "@/lib/template-types";
+import db from "@/lib/db";
 
 // ---------------------------------------------------------------------------
 // Constants — known action types and their manual-fallback instructions
@@ -66,6 +67,146 @@ const ACTION_TYPE_MANUAL_STEPS: Record<string, string> = {
 
 const MAX_ATTEMPTS = 5;
 
+// Action types known to fail on most portals (silent 500s, missing scopes)
+const UNIVERSALLY_BROKEN_ACTION_TYPES = new Set(["0-9", "0-11"]);
+
+// ---------------------------------------------------------------------------
+// Error Classification — distinguish action-type errors from auth/scope/rate errors
+// ---------------------------------------------------------------------------
+
+/**
+ * Determine whether a HubSpot API error is likely caused by unsupported action
+ * types (and thus eligible for partial-install retry) versus a structural error
+ * like auth failure, missing scope, malformed payload, or rate limiting.
+ */
+export function isActionTypeError(error: unknown): boolean {
+  if (error instanceof HubSpotApiError) {
+    // Auth, permission, and rate limit errors are never action-type errors
+    if ([401, 403, 429].includes(error.statusCode)) return false;
+    // 404 is "endpoint not found", not an action type issue
+    if (error.statusCode === 404) return false;
+  }
+
+  const message = error instanceof Error ? error.message : String(error);
+  const lowerMessage = message.toLowerCase();
+
+  // Check for action-type-related keywords in the error
+  const actionTypePatterns = [
+    /action\s*type/i,
+    /actiontypeid/i,
+    /not\s+(?:available|supported|allowed|enabled)/i,
+    /unsupported\s+action/i,
+  ];
+
+  for (const pattern of actionTypePatterns) {
+    if (pattern.test(message)) return true;
+  }
+
+  // HubSpot sometimes returns generic 400/500 for action type issues.
+  // If it's a 400 or 500 and we can't determine the cause, be conservative
+  // and allow partial-install to try (it will fail fast if no actions to strip).
+  if (error instanceof HubSpotApiError) {
+    if (error.statusCode === 400 || error.statusCode >= 500) {
+      // Check if the error mentions specific field validation issues
+      // that are NOT about action types — these should not trigger partial install
+      const structuralErrors = [
+        /required\s+field/i,
+        /invalid\s+(?:type|format|value)/i,
+        /missing\s+(?:required|property)/i,
+        /enrollment/i,
+        /filter/i,
+      ];
+      for (const pattern of structuralErrors) {
+        if (pattern.test(lowerMessage) && !actionTypePatterns.some(p => p.test(message))) {
+          return false;
+        }
+      }
+      // For unrecognized 400/500 errors, allow partial install to try
+      return true;
+    }
+  }
+
+  return false;
+}
+
+// ---------------------------------------------------------------------------
+// Pre-flight Action Type Stripping
+// ---------------------------------------------------------------------------
+
+/**
+ * Get the set of action type IDs known to be broken on a specific portal.
+ * Reads from cached deep_health_check results + universal broken list.
+ */
+export function getKnownBrokenActionTypes(portalId?: string): Set<string> {
+  const broken = new Set(UNIVERSALLY_BROKEN_ACTION_TYPES);
+
+  if (portalId) {
+    try {
+      const row = db
+        .prepare("SELECT value FROM app_settings WHERE key = ?")
+        .get(`health_deep_${portalId}`) as { value: string } | undefined;
+
+      if (row) {
+        const health = JSON.parse(row.value) as {
+          action_types?: { broken?: Array<{ id: string }> };
+        };
+        if (health.action_types?.broken) {
+          for (const action of health.action_types.broken) {
+            broken.add(action.id);
+          }
+        }
+      }
+    } catch {
+      // Fall back to universal list only
+    }
+  }
+
+  return broken;
+}
+
+/**
+ * Pre-strip known broken action types from a workflow payload BEFORE
+ * sending it to HubSpot. Returns the cleaned payload and any stripped actions.
+ */
+export function preStripBrokenActions(
+  payload: Record<string, unknown>,
+  workflowName: string,
+  portalId?: string
+): {
+  payload: Record<string, unknown>;
+  strippedActions: StrippedAction[];
+  manualSteps: ManualStep[];
+} {
+  const brokenTypes = getKnownBrokenActionTypes(portalId);
+  const actions = (Array.isArray(payload.actions) ? payload.actions : []) as WorkflowAction[];
+
+  const actionsToRemove = new Set<string>();
+  const strippedActions: StrippedAction[] = [];
+
+  for (const action of actions) {
+    const typeId = String(action.actionTypeId ?? "");
+    if (typeId && brokenTypes.has(typeId)) {
+      const actionId = String(action.actionId ?? "");
+      actionsToRemove.add(actionId);
+      strippedActions.push({
+        actionId,
+        actionTypeId: typeId,
+        label: getActionTypeLabel(typeId),
+        reason: `Pre-stripped: action type ${typeId} is known to fail on this portal`,
+        manualStep: buildManualStep(typeId, workflowName, actionId),
+      });
+    }
+  }
+
+  if (actionsToRemove.size === 0) {
+    return { payload, strippedActions: [], manualSteps: [] };
+  }
+
+  const cleaned = stripActionsAndRelink(payload, actionsToRemove);
+
+  return { payload: cleaned, strippedActions, manualSteps: buildManualSteps(strippedActions) };
+}
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -87,6 +228,8 @@ export interface PartialWorkflowInstallResult {
   attemptsNeeded: number;
   /** final error if status === "failed" */
   error?: string;
+  /** false when the error parser couldn't identify which actions to strip */
+  parseSucceeded?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -95,6 +238,10 @@ export interface PartialWorkflowInstallResult {
 
 function getActionTypeLabel(actionTypeId: string): string {
   return ACTION_TYPE_LABELS[actionTypeId] ?? `Action type ${actionTypeId}`;
+}
+
+function buildManualSteps(stripped: StrippedAction[]): ManualStep[] {
+  return stripped.map((sa) => ({ step: sa.manualStep, priority: "required" as const }));
 }
 
 function buildManualStep(
@@ -122,13 +269,14 @@ interface HubSpotApiErrorBody {
   message?: string;
   errors?: Array<{ message?: string; in?: string; code?: string }>;
   category?: string;
+  context?: Record<string, unknown>;
 }
 
 /**
  * Parse a HubSpot API error to find which actionTypeIds and/or action array
  * indices are problematic.
  */
-function parseHubSpotWorkflowError(error: unknown): {
+export function parseHubSpotWorkflowError(error: unknown): {
   problematicActionTypeIds: Set<string>;
   problematicActionIndices: Set<number>;
   rawMessage: string;
@@ -141,41 +289,40 @@ function parseHubSpotWorkflowError(error: unknown): {
     return { problematicActionTypeIds, problematicActionIndices, rawMessage };
   }
 
-  const axiosError = error as {
+  // Support both HubSpotApiError (has properties directly) and axios-style errors
+  const hsError = error as {
+    statusCode?: number;
+    category?: string;
     response?: { data?: HubSpotApiErrorBody };
     message?: string;
+    context?: Record<string, unknown>;
   };
 
-  rawMessage = axiosError.message || rawMessage;
-  const data = axiosError.response?.data;
-  if (!data) {
+  rawMessage = hsError.message || rawMessage;
+
+  // HubSpotApiError from api-client.ts has properties directly on the error
+  // Axios-style errors have them on response.data
+  const data: HubSpotApiErrorBody | undefined = hsError.response?.data || (
+    hsError.category ? {
+      status: String(hsError.statusCode ?? ""),
+      message: hsError.message,
+      category: hsError.category,
+    } : undefined
+  );
+
+  if (!data && !hsError.message) {
     return { problematicActionTypeIds, problematicActionIndices, rawMessage };
   }
 
-  const topMessage = data.message || "";
+  const topMessage = data?.message || hsError.message || "";
   if (topMessage) rawMessage = topMessage;
 
-  // Pattern: "action type 0-11 is not available" or "0-11" adjacent to keywords
-  function extractTypeIds(msg: string): void {
-    const pattern = /(?:action\s+type\s+|actionTypeId["\s:]+)([\d]+-[\d]+)/gi;
-    let m: RegExpExecArray | null;
-    while ((m = pattern.exec(msg)) !== null) {
-      problematicActionTypeIds.add(m[1]);
-    }
-    // Also pick up bare "X-Y not supported / not available / not allowed" patterns
-    const bare = /\b([\d]+-[\d]+)\b.*?(?:not\s+(?:available|supported|allowed|enabled))/gi;
-    let b: RegExpExecArray | null;
-    while ((b = bare.exec(msg)) !== null) {
-      problematicActionTypeIds.add(b[1]);
-    }
-  }
-
-  extractTypeIds(topMessage);
-
-  if (Array.isArray(data.errors)) {
+  // --- Strategy 1: Parse structured error fields first (most reliable) ---
+  if (Array.isArray(data?.errors)) {
     for (const err of data.errors) {
+      // Check for structured code/subCategory fields
+      const code = String(err.code || "");
       const msg = err.message || "";
-      extractTypeIds(msg);
 
       // Extract index from "in" field: "actions[2]" or "actions[2].actionTypeId"
       const inField = err.in || "";
@@ -183,10 +330,60 @@ function parseHubSpotWorkflowError(error: unknown): {
       if (indexMatch) {
         problematicActionIndices.add(parseInt(indexMatch[1], 10));
       }
+
+      // Parse actionTypeId from structured error context
+      if (code === "INVALID_ACTION_TYPE" || code === "UNSUPPORTED_ACTION_TYPE") {
+        extractTypeIds(msg, problematicActionTypeIds);
+      } else {
+        extractTypeIds(msg, problematicActionTypeIds);
+      }
+    }
+  }
+
+  // --- Strategy 2: Parse top-level message (fallback) ---
+  extractTypeIds(topMessage, problematicActionTypeIds);
+
+  // --- Strategy 3: Parse HubSpot context object ---
+  const context = data?.context || hsError.context;
+  if (context && typeof context === "object") {
+    const ctxRecord = context as Record<string, unknown>;
+    // HubSpot sometimes puts the problematic actionTypeId in context fields
+    for (const [key, value] of Object.entries(ctxRecord)) {
+      if (key.toLowerCase().includes("actiontype") && typeof value === "string") {
+        const match = value.match(/^(\d+-\d+)$/);
+        if (match) problematicActionTypeIds.add(match[1]);
+      }
     }
   }
 
   return { problematicActionTypeIds, problematicActionIndices, rawMessage };
+}
+
+// Known HubSpot correlation ID pattern — exclude from action type matching
+const CORRELATION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}/i;
+
+function extractTypeIds(msg: string, target: Set<string>): void {
+  // Pattern 1: "action type 0-11 is not available" or "actionTypeId 0-11"
+  const pattern = /(?:action\s*type\s+|actionTypeId["\s:]+)([\d]+-[\d]+)/gi;
+  let m: RegExpExecArray | null;
+  while ((m = pattern.exec(msg)) !== null) {
+    if (!CORRELATION_ID_PATTERN.test(m[1])) {
+      target.add(m[1]);
+    }
+  }
+
+  // Pattern 2: "X-Y not supported / not available / not allowed"
+  // Use word boundary and ensure it looks like an action type (small numbers)
+  const bare = /\b(\d{1,2}-\d{1,3})\b(?=.*?(?:not\s+(?:available|supported|allowed|enabled)|unsupported|invalid))/gi;
+  let b: RegExpExecArray | null;
+  while ((b = bare.exec(msg)) !== null) {
+    // Exclude patterns that look like version numbers (e.g., "3-0" with preceding "v")
+    // or correlation IDs
+    const candidate = b[1];
+    if (!CORRELATION_ID_PATTERN.test(candidate) && !/v\d/.test(msg.substring(Math.max(0, b.index - 2), b.index))) {
+      target.add(candidate);
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -326,14 +523,90 @@ function stripActionsAndRelink(
  *
  * @param payload   Full HubSpot v4 workflow payload (will NOT be mutated)
  * @param workflowName  Name used in manual-step instructions
+ * @param initialError  If provided, skip the first API call and parse this error directly.
+ *                      This avoids a redundant deployment attempt when the caller already tried and failed.
  */
 export async function attemptPartialWorkflowInstall(
   payload: Record<string, unknown>,
-  workflowName: string
+  workflowName: string,
+  initialError?: unknown
 ): Promise<PartialWorkflowInstallResult> {
   let currentPayload = { ...payload };
   const allStrippedActions: StrippedAction[] = [];
   let attempts = 0;
+
+  // If we have an initial error from the caller, process it first without making an API call
+  if (initialError) {
+    attempts++;
+    const {
+      problematicActionTypeIds,
+      problematicActionIndices,
+      rawMessage,
+    } = parseHubSpotWorkflowError(initialError);
+
+    const actions = (
+      Array.isArray(currentPayload.actions) ? currentPayload.actions : []
+    ) as WorkflowAction[];
+
+    const actionsToRemove = new Set<string>();
+
+    for (const action of actions) {
+      const typeId = String(action.actionTypeId ?? "");
+      if (typeId && problematicActionTypeIds.has(typeId)) {
+        actionsToRemove.add(String(action.actionId ?? ""));
+      }
+    }
+
+    for (const idx of Array.from(problematicActionIndices)) {
+      if (idx < actions.length) {
+        const id = String(actions[idx].actionId ?? "");
+        if (id) actionsToRemove.add(id);
+      }
+    }
+
+    if (actionsToRemove.size === 0) {
+      return {
+        status: "failed",
+        installedActionIds: [],
+        strippedActions: [],
+        manualSteps: [],
+        attemptsNeeded: attempts,
+        error: rawMessage,
+        parseSucceeded: false,
+      };
+    }
+
+    for (const actionId of Array.from(actionsToRemove)) {
+      const action = actions.find((a) => String(a.actionId ?? "") === actionId);
+      if (!action) continue;
+      const actionTypeId = String(action.actionTypeId ?? "unknown");
+      allStrippedActions.push({
+        actionId,
+        actionTypeId,
+        label: getActionTypeLabel(actionTypeId),
+        reason: rawMessage,
+        manualStep: buildManualStep(actionTypeId, workflowName, actionId),
+      });
+    }
+
+    currentPayload = stripActionsAndRelink(currentPayload, actionsToRemove);
+
+    const remaining = (
+      Array.isArray(currentPayload.actions) ? currentPayload.actions : []
+    ) as WorkflowAction[];
+
+    if (remaining.length === 0) {
+      return {
+        status: "failed",
+        installedActionIds: [],
+        strippedActions: allStrippedActions,
+        manualSteps: buildManualSteps(allStrippedActions),
+        attemptsNeeded: attempts,
+        error: "All actions were stripped — no deployable actions remain",
+        parseSucceeded: true,
+      };
+    }
+  }
 
   while (attempts < MAX_ATTEMPTS) {
     attempts++;
@@ -355,17 +628,12 @@ export async function attemptPartialWorkflowInstall(
         Array.isArray(currentPayload.actions) ? currentPayload.actions : []
       ) as WorkflowAction[];
 
-      const manualSteps: ManualStep[] = allStrippedActions.map((sa) => ({
-        step: sa.manualStep,
-        priority: "required" as const,
-      }));
-
       return {
         flowId,
         status: allStrippedActions.length > 0 ? "partial" : "success",
         installedActionIds: installedActions.map((a) => String(a.actionId ?? "")),
         strippedActions: allStrippedActions,
-        manualSteps,
+        manualSteps: buildManualSteps(allStrippedActions),
         attemptsNeeded: attempts,
       };
     } catch (error) {
@@ -398,15 +666,11 @@ export async function attemptPartialWorkflowInstall(
 
       if (actionsToRemove.size === 0) {
         // Cannot identify which actions are at fault — give up
-        const manualSteps: ManualStep[] = allStrippedActions.map((sa) => ({
-          step: sa.manualStep,
-          priority: "required" as const,
-        }));
         return {
           status: "failed",
           installedActionIds: [],
           strippedActions: allStrippedActions,
-          manualSteps,
+          manualSteps: buildManualSteps(allStrippedActions),
           attemptsNeeded: attempts,
           error: rawMessage,
         };
@@ -437,15 +701,11 @@ export async function attemptPartialWorkflowInstall(
       ) as WorkflowAction[];
 
       if (remaining.length === 0) {
-        const manualSteps: ManualStep[] = allStrippedActions.map((sa) => ({
-          step: sa.manualStep,
-          priority: "required" as const,
-        }));
         return {
           status: "failed",
           installedActionIds: [],
           strippedActions: allStrippedActions,
-          manualSteps,
+          manualSteps: buildManualSteps(allStrippedActions),
           attemptsNeeded: attempts,
           error: "All actions were stripped — no deployable actions remain",
         };
@@ -454,15 +714,11 @@ export async function attemptPartialWorkflowInstall(
   }
 
   // Exhausted retries
-  const manualSteps: ManualStep[] = allStrippedActions.map((sa) => ({
-    step: sa.manualStep,
-    priority: "required" as const,
-  }));
   return {
     status: "failed",
     installedActionIds: [],
     strippedActions: allStrippedActions,
-    manualSteps,
+    manualSteps: buildManualSteps(allStrippedActions),
     attemptsNeeded: attempts,
     error: "Maximum retry attempts reached during partial install",
   };

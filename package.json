@@ -13,7 +13,9 @@
     "prelaunch:check": "bash scripts/prelaunch-check.sh",
     "e2e": "bash scripts/e2e.sh",
     "mcp": "npx tsx mcp-server.ts",
-    "mcp:http": "npx tsx mcp-server.ts --http"
+    "mcp:http": "npx tsx mcp-server.ts --http",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",
@@ -46,7 +48,8 @@
     "eslint": "^9.39.4",
     "eslint-config-next": "^16.2.0",
     "tsx": "^4.21.0",
-    "typescript": "^5.5.4"
+    "typescript": "^5.5.4",
+    "vitest": "^4.1.0"
   },
   "engines": {
     "node": ">=20.0.0"

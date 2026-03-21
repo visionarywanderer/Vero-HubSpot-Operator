@@ -3,7 +3,7 @@ import { apiClient, hubSpotClient } from "@/lib/api-client";
 import { authManager } from "@/lib/auth-manager";
 import { changeLogger } from "@/lib/change-logger";
 import { canWriteInEnvironment, missingScopesFor } from "@/lib/safety-governance";
-import { attemptPartialWorkflowInstall, type PartialWorkflowInstallResult } from "@/lib/partial-install";
+import { attemptPartialWorkflowInstall, isActionTypeError, preStripBrokenActions, type PartialWorkflowInstallResult } from "@/lib/partial-install";
 import { appendPartialInstallLearning } from "@/lib/skills-learner";
 
 export type WorkflowSpec = Record<string, unknown>;
@@ -58,6 +58,10 @@ export function normalizeWorkflowDefaults(spec: WorkflowSpec): WorkflowSpec {
     suppressionListIds: spec.suppressionListIds ?? [],
     timeWindows: spec.timeWindows ?? [],
     blockedDates: spec.blockedDates ?? [],
+    // HubSpot v4 API requires nextAvailableActionId as a string
+    ...(spec.nextAvailableActionId != null
+      ? { nextAvailableActionId: String(spec.nextAvailableActionId) }
+      : {}),
   };
 }
 
@@ -192,7 +196,7 @@ class HubSpotWorkflowEngine implements WorkflowEngine {
       return { success: false, errors: ["Deploy failed: flowId missing in response"] };
     }
 
-    const deployed = await this.get(flowId);
+    const deployed = await this.get(flowId).catch(() => ({} as WorkflowSpec));
 
     const portalId = authManager.getActivePortal().id;
     const artifactName = String(safeSpec.name || "workflow-spec");
@@ -233,10 +237,21 @@ class HubSpotWorkflowEngine implements WorkflowEngine {
 
     const safeSpec = normalizeWorkflowDefaults(spec);
     const workflowName = String(safeSpec.name || "Unnamed Workflow");
+    const portalId = authManager.getActivePortal().id;
 
-    // Try full deploy first
+    // Phase 2: Pre-strip known broken action types before attempting deployment
+    const preStrip = preStripBrokenActions(
+      safeSpec as Record<string, unknown>,
+      workflowName,
+      portalId
+    );
+    const deployPayload = preStrip.payload;
+    const preStrippedActions = preStrip.strippedActions;
+
+    // Try full deploy first (with pre-stripped payload)
+    let firstDeployError: unknown = undefined;
     try {
-      const response = await apiClient.workflows.create(safeSpec);
+      const response = await apiClient.workflows.create(deployPayload);
       const created = response.data as { id?: string; flowId?: string; name?: string };
       const flowId = created.id || created.flowId;
 
@@ -244,8 +259,7 @@ class HubSpotWorkflowEngine implements WorkflowEngine {
         return { success: false, errors: ["Deploy failed: flowId missing in response"] };
       }
 
-      const deployed = await this.get(flowId);
-      const portalId = authManager.getActivePortal().id;
+      const deployed = await this.get(flowId).catch(() => ({} as WorkflowSpec));
       await saveWorkflowSpecArtifact(portalId, workflowName, safeSpec);
       await changeLogger.log({
         portalId,
@@ -254,11 +268,32 @@ class HubSpotWorkflowEngine implements WorkflowEngine {
         action: "workflow_deploy",
         objectType: "workflow",
         recordId: flowId,
-        description: `Deployed workflow "${workflowName}" (disabled)`,
+        description: preStrippedActions.length > 0
+          ? `Deployed workflow "${workflowName}" (disabled) — ${preStrippedActions.length} action(s) pre-stripped`
+          : `Deployed workflow "${workflowName}" (disabled)`,
         after: safeSpec,
         status: "success",
         initiatedBy: "VeroDigital",
       });
+
+      // If we pre-stripped actions, report as partial success
+      if (preStrippedActions.length > 0) {
+        return {
+          success: true,
+          flowId,
+          revisionId: String((deployed.revisionId as string) || ""),
+          name: String((deployed.name as string) || workflowName),
+          isEnabled: Boolean(deployed.isEnabled),
+          partial: {
+            flowId,
+            status: "partial",
+            installedActionIds: ((deployPayload.actions || []) as Array<Record<string, unknown>>).map(a => String(a.actionId ?? "")),
+            strippedActions: preStrippedActions,
+            manualSteps: preStrip.manualSteps,
+            attemptsNeeded: 1,
+          },
+        };
+      }
 
       return {
         success: true,
@@ -267,15 +302,43 @@ class HubSpotWorkflowEngine implements WorkflowEngine {
         name: String((deployed.name as string) || workflowName),
         isEnabled: Boolean(deployed.isEnabled),
       };
-    } catch {
-      // Fall through to partial-install engine
+    } catch (error) {
+      firstDeployError = error;
+    }
+
+    // Phase 1: Error triage — only fall through to partial-install for action-type errors
+    if (!isActionTypeError(firstDeployError)) {
+      const errorMessage = firstDeployError instanceof Error
+        ? firstDeployError.message
+        : "Workflow deployment failed";
+      return {
+        success: false,
+        errors: [errorMessage],
+        ...(preStrippedActions.length > 0 ? {
+          partial: {
+            status: "failed" as const,
+            installedActionIds: [],
+            strippedActions: preStrippedActions,
+            manualSteps: preStrip.manualSteps,
+            attemptsNeeded: 1,
+            error: errorMessage,
+          }
+        } : {}),
+      };
     }
 
     // Partial-install: strip unsupported actions, retry
+    // Pass the initial error to avoid a redundant API call
     const partial = await attemptPartialWorkflowInstall(
-      safeSpec as Record<string, unknown>,
-      workflowName
+      deployPayload,
+      workflowName,
+      firstDeployError
     );
+    // Merge pre-stripped actions into the partial result
+    partial.strippedActions = [...preStrippedActions, ...partial.strippedActions];
+    if (preStrip.manualSteps.length > 0) {
+      partial.manualSteps = [...preStrip.manualSteps, ...partial.manualSteps];
+    }
 
     // Self-improve: log new failure patterns
     for (const stripped of partial.strippedActions) {
@@ -297,7 +360,6 @@ class HubSpotWorkflowEngine implements WorkflowEngine {
     }
 
     // Partial or full success
-    const portalId = authManager.getActivePortal().id;
     if (partial.flowId) {
       const deployed = await this.get(partial.flowId).catch(() => ({} as WorkflowSpec));
       await saveWorkflowSpecArtifact(portalId, workflowName, safeSpec);
@@ -353,7 +415,7 @@ class HubSpotWorkflowEngine implements WorkflowEngine {
 
     const safeSpec = normalizeWorkflowDefaults(spec);
     await apiClient.workflows.update(flowId, safeSpec);
-    const deployed = await this.get(flowId);
+    const deployed = await this.get(flowId).catch(() => ({} as WorkflowSpec));
 
     await changeLogger.log({
       portalId: authManager.getActivePortal().id,

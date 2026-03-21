@@ -172,6 +172,7 @@ async function validateAndDetectScopes(token: string): Promise<{ ok: boolean; sc
 class SqliteAuthManager implements AuthManager {
   private validatedThisSession = new Set<string>();
   private refreshPromise: Promise<void> | null = null;
+  private refreshCooldownUntil = 0;
 
   async withPortal<T>(portalId: string, fn: () => Promise<T>): Promise<T> {
     return portalContext.run({ portalId }, fn);
@@ -237,9 +238,15 @@ class SqliteAuthManager implements AuthManager {
 
   private async refreshTokenIfNeeded(portalId?: string): Promise<void> {
     if (this.refreshPromise) return this.refreshPromise;
-    this.refreshPromise = this._doRefresh(portalId).finally(() => {
-      this.refreshPromise = null;
-    });
+    if (Date.now() < this.refreshCooldownUntil) return;
+    this.refreshPromise = this._doRefresh(portalId)
+      .catch(() => {
+        // Back off for 30s after a refresh failure to avoid hammering the token endpoint
+        this.refreshCooldownUntil = Date.now() + 30_000;
+      })
+      .finally(() => {
+        this.refreshPromise = null;
+      });
     return this.refreshPromise;
   }
 
@@ -268,7 +275,7 @@ class SqliteAuthManager implements AuthManager {
       cache: "no-store"
     });
 
-    if (!tokenResp.ok) return;
+    if (!tokenResp.ok) throw new Error("Token refresh failed");
 
     const tokenData = (await tokenResp.json()) as {
       access_token?: string;
@@ -276,7 +283,7 @@ class SqliteAuthManager implements AuthManager {
       expires_in?: number;
     };
 
-    if (!tokenData.access_token) return;
+    if (!tokenData.access_token) throw new Error("Token refresh returned no access_token");
 
     // After refresh, re-introspect to get the latest granted scopes
     let newScopes = portal.scopes;

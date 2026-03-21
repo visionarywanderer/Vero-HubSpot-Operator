@@ -332,8 +332,9 @@ const body = {
 
 ## Procedure
 
-1. Ask the user what the bulk operation should do
-2. Identify: object type, filter criteria, action to perform
+1. **⚡ FIRST: Read `hubspot-learnings` skill** — cross-check your planned operation against ALL known patterns and failures. Do NOT skip this step.
+2. Ask the user what the bulk operation should do
+3. Identify: object type, filter criteria, action to perform
 3. Generate a complete Node.js script using the template above
 4. Replace all `{{PLACEHOLDER}}` values with actual values
 5. Ensure `--dry-run` support and JSONL logging are included

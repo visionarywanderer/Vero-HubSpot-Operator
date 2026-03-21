@@ -24,6 +24,41 @@ This is the central coordinator for the Vero HubSpot Operator skill system. It r
 
 ---
 
+## Data Privacy Rules
+
+**Portal data MUST NOT persist in Claude's context between sessions.** The app (Railway middleware) is the authorized store for portal data. Claude's skills, memories, and CLAUDE.md are NOT authorized stores.
+
+### What MUST NOT be stored in skills, memories, or CLAUDE.md:
+- Portal IDs (Hub IDs like `12345678`)
+- Owner IDs (numeric HubSpot user IDs)
+- Owner names or any person names associated with portals
+- Contact names, email addresses, phone numbers, or any PII from portal records
+- API keys, OAuth tokens, or any credentials
+- Company names associated with specific portal configurations
+
+### What CAN be stored:
+- Generic API patterns with placeholder values (`{portal_id}`, `{owner_id}`)
+- Error patterns and fixes with sanitized examples
+- Structural rules (field formats, type mappings, filter hierarchies)
+- Action type references and their required fields
+
+### Rules for learnings entries:
+- Use `{portal_id}`, `{owner_id}`, `{owner_name}` as placeholders — never real values
+- Describe portals generically: "a portal", "the target portal" — never by Hub ID
+- JSON examples must use placeholder values, not real data
+
+### After completing work on a portal:
+- State: "No portal-specific data has been persisted to skills or memory."
+- If a learnings entry was added, verify it uses placeholders before saving
+
+### Stale data prevention:
+- NEVER reference portal data from earlier in the conversation — always use the LATEST tool result
+- If `list_portals` was called earlier and returns different results now, ONLY use the new result
+- Never state portal counts, IDs, names, workflows, or properties from conversation memory — always re-fetch
+- Treat every MCP tool response as the single source of truth, discarding any prior knowledge from the same session
+
+---
+
 ## Skill Catalog
 
 | Skill | File | Trigger Phrases | MCP Tool |
@@ -314,9 +349,10 @@ Do I need real-time membership updates?
 
 ## Procedure
 
-1. **Receive** the user's request
-2. **Classify** — single-skill or multi-skill? (see Routing Logic)
-3. **If meeting notes** — invoke Meeting Analysis skill first
+1. **⚡ FIRST: Read `hubspot-learnings` skill** — cross-check against ALL known patterns and failures before any operation. Do NOT skip this step.
+2. **Receive** the user's request
+3. **Classify** — single-skill or multi-skill? (see Routing Logic)
+4. **If meeting notes** — invoke Meeting Analysis skill first
 4. **If multi-skill** — build dependency-resolved execution plan
 5. **Present** the plan with all resources, flags, and tier checks
 6. **Get approval** — "Shall I create these drafts?"

@@ -10,11 +10,9 @@ import { listManager } from "@/lib/list-manager";
 import { workflowEngine } from "@/lib/workflow-engine";
 import { hubSpotClient } from "@/lib/api-client";
 import { changeLogger } from "@/lib/change-logger";
-import { validateTemplate } from "@/lib/constraint-validator";
+import { validateTemplate, validateWorkflowForDeploy } from "@/lib/constraint-validator";
 import { resolveDependencies } from "@/lib/dependency-resolver";
 import { templateStore } from "@/lib/template-store";
-import { attemptPartialWorkflowInstall } from "@/lib/partial-install";
-import { appendPartialInstallLearning } from "@/lib/skills-learner";
 
 import type {
   TemplateResources,
@@ -37,10 +35,11 @@ import type {
 interface ResourceCache {
   propertyGroups: Map<string, Set<string>>; // objectType → set of group names
   properties: Map<string, Set<string>>;     // objectType → set of property names
+  workflowNames: Set<string> | null;        // existing workflow names for idempotency
 }
 
 function createResourceCache(): ResourceCache {
-  return { propertyGroups: new Map(), properties: new Map() };
+  return { propertyGroups: new Map(), properties: new Map(), workflowNames: null };
 }
 
 async function getCachedPropertyGroups(cache: ResourceCache, objectType: string): Promise<Set<string>> {
@@ -120,11 +119,35 @@ async function executePipeline(spec: PipelineResourceSpec): Promise<ResourceExec
   }
 }
 
-async function executeWorkflow(spec: WorkflowResourceSpec): Promise<ResourceExecutionResult> {
+async function getCachedWorkflowNames(cache: ResourceCache): Promise<Set<string>> {
+  if (cache.workflowNames) return cache.workflowNames;
+  try {
+    const response = await hubSpotClient.get("/automation/v4/flows", { limit: 500 });
+    const data = response.data as { results?: Array<{ name?: string }> };
+    cache.workflowNames = new Set(
+      (data.results || []).map((w) => String(w.name || "")).filter(Boolean)
+    );
+  } catch {
+    cache.workflowNames = new Set();
+  }
+  return cache.workflowNames;
+}
+
+async function executeWorkflow(spec: WorkflowResourceSpec, cache: ResourceCache): Promise<ResourceExecutionResult> {
   const key = `workflow:${spec.name}`;
 
-  // Build minimal spec and call HubSpot API directly (bypass workflowEngine
-  // which adds defaults that break LIST_BRANCH workflows)
+  // Idempotency — check if workflow already exists
+  const existing = await getCachedWorkflowNames(cache);
+  if (existing.has(spec.name)) {
+    return {
+      key,
+      type: "workflow",
+      status: "skipped",
+      error: `Workflow "${spec.name}" already exists — skipping to avoid duplicates`,
+    };
+  }
+
+  // Build payload from template spec
   const specAny = spec as unknown as Record<string, unknown>;
   const payload: Record<string, unknown> = {
     name: spec.name,
@@ -136,57 +159,41 @@ async function executeWorkflow(spec: WorkflowResourceSpec): Promise<ResourceExec
     nextAvailableActionId: String(spec.nextAvailableActionId),
     enrollmentCriteria: spec.enrollmentCriteria,
     actions: spec.actions,
+    ...(Array.isArray(specAny.dataSources) ? { dataSources: specAny.dataSources } : {}),
   };
-  if (Array.isArray(specAny.dataSources)) {
-    payload.dataSources = specAny.dataSources;
-  }
 
   // Small delay before each workflow creation to avoid HubSpot rate limits
   await new Promise((resolve) => setTimeout(resolve, 3000));
 
-  // --- Fast path: try a full deploy first ---
-  try {
-    const response = await hubSpotClient.post("/automation/v4/flows", payload);
-    const created = response.data as { id?: string; flowId?: string };
-    const flowId = created.id || created.flowId;
-    return { key, type: "workflow", status: "success", hubspotId: flowId };
-  } catch {
-    // Fall through to partial-install engine
+  // Delegate to workflowEngine which handles pre-strip, error triage,
+  // partial-install fallback, artifact saving, and learning append
+  const result = await workflowEngine.deployPartial(payload);
+
+  // Track as created for idempotency
+  if (result.success) {
+    existing.add(spec.name);
   }
 
-  // --- Partial-install: strip unsupported actions, retry up to 5x ---
-  const partial = await attemptPartialWorkflowInstall(payload, spec.name);
-
-  // Self-improve: record new failure patterns to skills-learner
-  for (const stripped of partial.strippedActions) {
-    appendPartialInstallLearning({
-      category: "WORKFLOW",
-      workflowName: spec.name,
-      actionTypeId: stripped.actionTypeId,
-      actionLabel: stripped.label,
-      error: stripped.reason,
-    });
-  }
-
-  if (partial.status === "failed") {
+  // Map DeployResult to ResourceExecutionResult
+  if (!result.success) {
     return {
       key,
       type: "workflow",
       status: "error",
-      error: partial.error ?? "Workflow deployment failed",
-      strippedActions: partial.strippedActions.length > 0 ? partial.strippedActions : undefined,
-      manualSteps: partial.manualSteps.length > 0 ? partial.manualSteps : undefined,
+      error: result.errors?.join("; ") ?? "Workflow deployment failed",
+      strippedActions: result.partial?.strippedActions.length ? result.partial.strippedActions : undefined,
+      manualSteps: result.partial?.manualSteps.length ? result.partial.manualSteps : undefined,
     };
   }
 
-  // Partial or full success via partial-install
+  const hasStripped = result.partial && result.partial.strippedActions.length > 0;
   return {
     key,
     type: "workflow",
-    status: partial.strippedActions.length > 0 ? "partial" : "success",
-    hubspotId: partial.flowId,
-    strippedActions: partial.strippedActions.length > 0 ? partial.strippedActions : undefined,
-    manualSteps: partial.manualSteps.length > 0 ? partial.manualSteps : undefined,
+    status: hasStripped ? "partial" : "success",
+    hubspotId: result.flowId,
+    strippedActions: hasStripped ? result.partial!.strippedActions : undefined,
+    manualSteps: result.partial?.manualSteps.length ? result.partial.manualSteps : undefined,
   };
 }
 
@@ -256,7 +263,7 @@ async function executeResource(resource: ResolvedResource, cache: ResourceCache)
     case "pipeline":
       return executePipeline(resource.spec as unknown as PipelineResourceSpec);
     case "workflow":
-      return executeWorkflow(resource.spec as unknown as WorkflowResourceSpec);
+      return executeWorkflow(resource.spec as unknown as WorkflowResourceSpec, cache);
     case "list":
       return executeList(resource.spec as unknown as ListResourceSpec);
     case "customObject":
@@ -277,8 +284,8 @@ export async function executeConfig(
 ): Promise<ExecutionReport> {
   const startedAt = new Date().toISOString();
 
-  // Validate (skip workflows — they use HubSpot API format, not validator format)
-  const { workflows: _wf, ...validationResources } = resources;
+  // Validate non-workflow resources using template validator
+  const { workflows: templateWorkflows, ...validationResources } = resources;
   const validation = validateTemplate({
     id: options?.templateId || "inline",
     name: "inline-config",
@@ -287,12 +294,19 @@ export async function executeConfig(
     resources: validationResources,
   });
 
-  if (!validation.valid) {
+  // Validate workflows separately using deploy-format validator
+  const workflowValidationErrors = (templateWorkflows || []).flatMap((w) =>
+    validateWorkflowForDeploy(w as unknown as Record<string, unknown>)
+  );
+
+  const allValidationErrors = [...validation.errors, ...workflowValidationErrors];
+
+  if (allValidationErrors.length > 0) {
     return {
       templateId: options?.templateId,
       portalId,
       status: "failed",
-      results: validation.errors.map((e) => ({
+      results: allValidationErrors.map((e) => ({
         key: e.resource,
         type: "property" as const,
         status: "error" as const,
@@ -372,13 +386,27 @@ export async function executeConfig(
         continue;
       }
 
-      // Execute the entire tier concurrently
-      const tierResults = await Promise.all(tier.map((resource) => executeResource(resource, cache)));
+      // Execute the tier: workflows run sequentially (rate limit safety),
+      // other resource types run concurrently within the tier.
+      const workflowResources = tier.filter((r) => r.type === "workflow");
+      const nonWorkflowResources = tier.filter((r) => r.type !== "workflow");
 
-      for (let i = 0; i < tier.length; i++) {
-        results.push(tierResults[i]);
-        if (tierResults[i].status === "error") failedKeys.add(tier[i].key);
-        completedKeys.add(tier[i].key);
+      // Non-workflow resources: execute concurrently
+      const nonWfResults = await Promise.all(
+        nonWorkflowResources.map((resource) => executeResource(resource, cache))
+      );
+      for (let i = 0; i < nonWorkflowResources.length; i++) {
+        results.push(nonWfResults[i]);
+        if (nonWfResults[i].status === "error") failedKeys.add(nonWorkflowResources[i].key);
+        completedKeys.add(nonWorkflowResources[i].key);
+      }
+
+      // Workflow resources: execute sequentially to avoid rate limits
+      for (const wfResource of workflowResources) {
+        const wfResult = await executeResource(wfResource, cache);
+        results.push(wfResult);
+        if (wfResult.status === "error") failedKeys.add(wfResource.key);
+        completedKeys.add(wfResource.key);
       }
 
       remaining = deferred;
