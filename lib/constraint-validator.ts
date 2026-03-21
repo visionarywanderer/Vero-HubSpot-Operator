@@ -178,6 +178,144 @@ export function validateWorkflow(spec: WorkflowResourceSpec): ValidationError[] 
     }
   }
 
+  // Enrollment criteria structural validation
+  errors.push(...validateEnrollmentCriteria(spec.enrollmentCriteria, key));
+
+  return errors;
+}
+
+// --- Enrollment Criteria Validation ---
+
+function validateEnrollmentCriteria(
+  criteria: unknown,
+  parentKey: string
+): ValidationError[] {
+  const errors: ValidationError[] = [];
+  if (!criteria || typeof criteria !== "object") return errors;
+
+  const c = criteria as Record<string, unknown>;
+
+  // enrollmentCriteria.type is required
+  if (!c.type) {
+    errors.push(err(parentKey, "enrollmentCriteria.type", "Enrollment criteria must have a type"));
+  }
+
+  // If there's a filterBranch, validate its structure
+  if (c.filterBranch && typeof c.filterBranch === "object") {
+    errors.push(...validateFilterBranch(c.filterBranch as Record<string, unknown>, parentKey, "enrollmentCriteria.filterBranch"));
+  }
+
+  return errors;
+}
+
+function validateFilterBranch(
+  branch: Record<string, unknown>,
+  parentKey: string,
+  path: string
+): ValidationError[] {
+  const errors: ValidationError[] = [];
+
+  // filterBranch should have filterBranchType
+  if (!branch.filterBranchType) {
+    errors.push(err(parentKey, `${path}.filterBranchType`, "Filter branch must have a filterBranchType (OR, AND)"));
+  }
+
+  // Check filterBranchOperator if present
+  const validOperators = ["OR", "AND"];
+  if (branch.filterBranchOperator && !validOperators.includes(String(branch.filterBranchOperator))) {
+    errors.push(err(parentKey, `${path}.filterBranchOperator`, `Invalid filterBranchOperator "${branch.filterBranchOperator}". Valid: ${validOperators.join(", ")}`));
+  }
+
+  // Validate nested filterBranches
+  if (Array.isArray(branch.filterBranches)) {
+    for (let i = 0; i < branch.filterBranches.length; i++) {
+      const nested = branch.filterBranches[i];
+      if (nested && typeof nested === "object") {
+        errors.push(...validateFilterBranch(nested as Record<string, unknown>, parentKey, `${path}.filterBranches[${i}]`));
+      }
+    }
+  }
+
+  // Validate filters array
+  if (Array.isArray(branch.filters)) {
+    for (let i = 0; i < branch.filters.length; i++) {
+      const filter = branch.filters[i] as Record<string, unknown> | undefined;
+      if (filter && !filter.property && !filter.filterType) {
+        errors.push(err(parentKey, `${path}.filters[${i}]`, "Filter must have a property or filterType"));
+      }
+    }
+  }
+
+  return errors;
+}
+
+// --- Workflow Deploy-Format Validation (for templates using HubSpot API format) ---
+
+/**
+ * Validates a workflow spec in HubSpot API format (used by templates and direct deploys).
+ * This is lighter than validateWorkflow() which validates the template format.
+ */
+export function validateWorkflowForDeploy(spec: Record<string, unknown>): ValidationError[] {
+  const errors: ValidationError[] = [];
+  const key = `workflow:${spec.name || "unknown"}`;
+
+  // Required fields
+  if (!spec.name) errors.push(err(key, "name", "Missing: name"));
+  if (!spec.type) errors.push(err(key, "type", "Missing: type (CONTACT_FLOW or PLATFORM_FLOW)"));
+  if (!spec.objectTypeId) errors.push(err(key, "objectTypeId", "Missing: objectTypeId"));
+  if (!spec.startActionId && spec.startActionId !== 0) errors.push(err(key, "startActionId", "Missing: startActionId"));
+  if (!Array.isArray(spec.actions) || spec.actions.length === 0) errors.push(err(key, "actions", "Missing: actions array"));
+  if (!spec.enrollmentCriteria) errors.push(err(key, "enrollmentCriteria", "Missing: enrollmentCriteria"));
+
+  // Safety: isEnabled must be false
+  if (spec.isEnabled !== false) errors.push(err(key, "isEnabled", "SAFETY: isEnabled must be false"));
+
+  const actions = (Array.isArray(spec.actions) ? spec.actions : []) as Array<Record<string, unknown>>;
+  const actionIds = new Set(actions.map((a) => String(a.actionId || "")));
+
+  // startActionId must reference an existing action
+  const startActionId = String(spec.startActionId || "");
+  if (startActionId && !actionIds.has(startActionId)) {
+    errors.push(err(key, "startActionId", `startActionId "${startActionId}" not found in actions`));
+  }
+
+  // Validate action chain integrity
+  for (const action of actions) {
+    const actionId = String(action.actionId || "unknown");
+    const connection = action.connection as { nextActionId?: string } | undefined;
+    const nextActionId = connection?.nextActionId;
+    if (nextActionId && !actionIds.has(String(nextActionId))) {
+      errors.push(err(key, `action[${actionId}].connection.nextActionId`, `Points to non-existent action "${nextActionId}"`));
+    }
+  }
+
+  // nextAvailableActionId validation
+  const numericIds = actions
+    .map((a) => Number(a.actionId))
+    .filter((v) => Number.isFinite(v));
+  if (numericIds.length) {
+    const maxActionId = Math.max(...numericIds);
+    const nextAvail = Number(spec.nextAvailableActionId);
+    if (!Number.isFinite(nextAvail) || nextAvail !== maxActionId + 1) {
+      errors.push(err(key, "nextAvailableActionId", `nextAvailableActionId must be ${maxActionId + 1} (as string)`));
+    }
+  }
+
+  // Type-objectTypeId consistency
+  const type = String(spec.type || "");
+  const objectTypeId = String(spec.objectTypeId || "");
+  if (objectTypeId === "0-1" && type && type !== "CONTACT_FLOW") {
+    errors.push(err(key, "type", "Contacts workflows must use type CONTACT_FLOW"));
+  }
+  if (objectTypeId !== "0-1" && type && type !== "PLATFORM_FLOW") {
+    errors.push(err(key, "type", "Non-contact workflows must use type PLATFORM_FLOW"));
+  }
+
+  // Enrollment criteria
+  if (spec.enrollmentCriteria) {
+    errors.push(...validateEnrollmentCriteria(spec.enrollmentCriteria, key));
+  }
+
   return errors;
 }
 

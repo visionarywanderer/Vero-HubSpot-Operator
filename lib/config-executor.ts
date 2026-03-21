@@ -10,10 +10,10 @@ import { listManager } from "@/lib/list-manager";
 import { workflowEngine } from "@/lib/workflow-engine";
 import { hubSpotClient } from "@/lib/api-client";
 import { changeLogger } from "@/lib/change-logger";
-import { validateTemplate } from "@/lib/constraint-validator";
+import { validateTemplate, validateWorkflowForDeploy } from "@/lib/constraint-validator";
 import { resolveDependencies } from "@/lib/dependency-resolver";
 import { templateStore } from "@/lib/template-store";
-import { attemptPartialWorkflowInstall } from "@/lib/partial-install";
+import { attemptPartialWorkflowInstall, isActionTypeError, preStripBrokenActions } from "@/lib/partial-install";
 import { appendPartialInstallLearning } from "@/lib/skills-learner";
 
 import type {
@@ -120,13 +120,41 @@ async function executePipeline(spec: PipelineResourceSpec): Promise<ResourceExec
   }
 }
 
+// Cache for existing workflow names (per-execution) to avoid duplicates
+let existingWorkflowNames: Set<string> | null = null;
+
+async function getExistingWorkflowNames(): Promise<Set<string>> {
+  if (existingWorkflowNames) return existingWorkflowNames;
+  try {
+    const response = await hubSpotClient.get("/automation/v4/flows", { limit: 500 });
+    const data = response.data as { results?: Array<{ name?: string }> };
+    existingWorkflowNames = new Set(
+      (data.results || []).map((w) => String(w.name || "")).filter(Boolean)
+    );
+  } catch {
+    existingWorkflowNames = new Set();
+  }
+  return existingWorkflowNames;
+}
+
 async function executeWorkflow(spec: WorkflowResourceSpec): Promise<ResourceExecutionResult> {
   const key = `workflow:${spec.name}`;
+
+  // Phase 4: Idempotency — check if workflow already exists
+  const existing = await getExistingWorkflowNames();
+  if (existing.has(spec.name)) {
+    return {
+      key,
+      type: "workflow",
+      status: "skipped",
+      error: `Workflow "${spec.name}" already exists — skipping to avoid duplicates`,
+    };
+  }
 
   // Build minimal spec and call HubSpot API directly (bypass workflowEngine
   // which adds defaults that break LIST_BRANCH workflows)
   const specAny = spec as unknown as Record<string, unknown>;
-  const payload: Record<string, unknown> = {
+  let payload: Record<string, unknown> = {
     name: spec.name,
     type: spec.type,
     objectTypeId: spec.objectTypeId,
@@ -141,21 +169,65 @@ async function executeWorkflow(spec: WorkflowResourceSpec): Promise<ResourceExec
     payload.dataSources = specAny.dataSources;
   }
 
+  // Phase 2: Pre-strip known broken action types
+  let portalId: string | undefined;
+  try { portalId = authManager.getActivePortal().id; } catch { /* no portal context */ }
+  const preStrip = preStripBrokenActions(payload, spec.name, portalId);
+  payload = preStrip.payload;
+  const preStrippedActions = preStrip.strippedActions;
+
   // Small delay before each workflow creation to avoid HubSpot rate limits
   await new Promise((resolve) => setTimeout(resolve, 3000));
 
   // --- Fast path: try a full deploy first ---
+  let firstDeployError: unknown = undefined;
   try {
     const response = await hubSpotClient.post("/automation/v4/flows", payload);
     const created = response.data as { id?: string; flowId?: string };
     const flowId = created.id || created.flowId;
+
+    // Track as created for idempotency
+    existing.add(spec.name);
+
+    // If we pre-stripped actions, report as partial success
+    if (preStrippedActions.length > 0) {
+      return {
+        key,
+        type: "workflow",
+        status: "partial",
+        hubspotId: flowId,
+        strippedActions: preStrippedActions,
+        manualSteps: preStrip.manualSteps,
+      };
+    }
     return { key, type: "workflow", status: "success", hubspotId: flowId };
-  } catch {
-    // Fall through to partial-install engine
+  } catch (error) {
+    firstDeployError = error;
+  }
+
+  // Phase 1: Error triage — only fall through to partial-install for action-type errors
+  if (!isActionTypeError(firstDeployError)) {
+    const errorMessage = firstDeployError instanceof Error
+      ? firstDeployError.message
+      : "Workflow deployment failed";
+    return {
+      key,
+      type: "workflow",
+      status: "error",
+      error: errorMessage,
+      strippedActions: preStrippedActions.length > 0 ? preStrippedActions : undefined,
+      manualSteps: preStrip.manualSteps.length > 0 ? preStrip.manualSteps : undefined,
+    };
   }
 
   // --- Partial-install: strip unsupported actions, retry up to 5x ---
-  const partial = await attemptPartialWorkflowInstall(payload, spec.name);
+  // Pass the initial error to avoid a redundant API call
+  const partial = await attemptPartialWorkflowInstall(payload, spec.name, firstDeployError);
+  // Merge pre-stripped actions
+  partial.strippedActions = [...preStrippedActions, ...partial.strippedActions];
+  if (preStrip.manualSteps.length > 0) {
+    partial.manualSteps = [...preStrip.manualSteps, ...partial.manualSteps];
+  }
 
   // Self-improve: record new failure patterns to skills-learner
   for (const stripped of partial.strippedActions) {
@@ -277,8 +349,11 @@ export async function executeConfig(
 ): Promise<ExecutionReport> {
   const startedAt = new Date().toISOString();
 
-  // Validate (skip workflows — they use HubSpot API format, not validator format)
-  const { workflows: _wf, ...validationResources } = resources;
+  // Reset workflow name cache for fresh execution
+  existingWorkflowNames = null;
+
+  // Validate non-workflow resources using template validator
+  const { workflows: templateWorkflows, ...validationResources } = resources;
   const validation = validateTemplate({
     id: options?.templateId || "inline",
     name: "inline-config",
@@ -287,12 +362,19 @@ export async function executeConfig(
     resources: validationResources,
   });
 
-  if (!validation.valid) {
+  // Validate workflows separately using deploy-format validator
+  const workflowValidationErrors = (templateWorkflows || []).flatMap((w) =>
+    validateWorkflowForDeploy(w as unknown as Record<string, unknown>)
+  );
+
+  const allValidationErrors = [...validation.errors, ...workflowValidationErrors];
+
+  if (allValidationErrors.length > 0) {
     return {
       templateId: options?.templateId,
       portalId,
       status: "failed",
-      results: validation.errors.map((e) => ({
+      results: allValidationErrors.map((e) => ({
         key: e.resource,
         type: "property" as const,
         status: "error" as const,
@@ -372,13 +454,27 @@ export async function executeConfig(
         continue;
       }
 
-      // Execute the entire tier concurrently
-      const tierResults = await Promise.all(tier.map((resource) => executeResource(resource, cache)));
+      // Execute the tier: workflows run sequentially (rate limit safety),
+      // other resource types run concurrently within the tier.
+      const workflowResources = tier.filter((r) => r.type === "workflow");
+      const nonWorkflowResources = tier.filter((r) => r.type !== "workflow");
 
-      for (let i = 0; i < tier.length; i++) {
-        results.push(tierResults[i]);
-        if (tierResults[i].status === "error") failedKeys.add(tier[i].key);
-        completedKeys.add(tier[i].key);
+      // Non-workflow resources: execute concurrently
+      const nonWfResults = await Promise.all(
+        nonWorkflowResources.map((resource) => executeResource(resource, cache))
+      );
+      for (let i = 0; i < nonWorkflowResources.length; i++) {
+        results.push(nonWfResults[i]);
+        if (nonWfResults[i].status === "error") failedKeys.add(nonWorkflowResources[i].key);
+        completedKeys.add(nonWorkflowResources[i].key);
+      }
+
+      // Workflow resources: execute sequentially to avoid rate limits
+      for (const wfResource of workflowResources) {
+        const wfResult = await executeResource(wfResource, cache);
+        results.push(wfResult);
+        if (wfResult.status === "error") failedKeys.add(wfResource.key);
+        completedKeys.add(wfResource.key);
       }
 
       remaining = deferred;
