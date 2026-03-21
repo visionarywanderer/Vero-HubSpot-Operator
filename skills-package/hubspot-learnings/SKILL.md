@@ -11,6 +11,15 @@ description: "Self-improving knowledge base for HubSpot API patterns. MUST READ 
 2. **Cross-check** your spec against the Quick Reference rules and the Learnings Log
 3. **If a similar pattern exists** in the log, follow the documented fix — don't repeat the mistake
 
+### BEFORE Writing ANY Update to Skills (MANDATORY CONFLICT CHECK)
+Before appending a learning, updating a quick reference rule, or modifying any skill file:
+1. **Read ALL related skill files first** — check `hubspot-workflow-drafts`, `hubspot-connector`, `hubspot-operational-runbook`, and this learnings file for any existing statements about the same topic
+2. **Identify contradictions** — if the new pattern contradicts an existing example, JSON snippet, rule, or description in ANY skill file, you MUST fix the conflicting file(s) at the same time
+3. **Only write when conflicts = 0** — do NOT append a learning that says "use format X" if another skill file still shows "use format Y". Fix the other file FIRST, then append the learning.
+4. **Single source of truth** — the learnings file is authoritative for patterns discovered through deployment. If a skill file disagrees with a confirmed learning, the skill file is wrong and must be updated.
+
+Skipping this check creates confusion and causes repeated failures. This is non-negotiable.
+
 ### AFTER a Failure
 1. **Append a new entry** to the Learnings Log below with this format:
 ```
@@ -54,7 +63,7 @@ These 15 rules prevent 90% of failures. Check every one before deploying.
 | 4 | Match `operationType` to property type — ENUMERATION for dropdowns, MULTISTRING for text | WORKFLOW |
 | 5 | Action type `0-3` (Create task) needs `tasks` scope — check portal scopes via deep_health_check first | WORKFLOW |
 | 6 | Action types `0-9` (in-app notification) and `0-11` (rotate owner) cause silent 500s | WORKFLOW |
-| 7 | Use Set Property `0-5` with `hubspot_owner_id` instead of rotate-to-owner `0-11` | WORKFLOW |
+| 7 | Use Set Property `0-5` with `hubspot_owner_id` instead of rotate-to-owner `0-11`. **0-5 fields MUST use `property_name` + `value` as separate keys** — never use property name as the field key. | WORKFLOW |
 | 8 | Deal workflows: use `CONTACT_FLOW` + `dataSources` — NOT `PLATFORM_FLOW` with LIST_BRANCH | WORKFLOW |
 | 9 | `nextAvailableActionId` must be a **string** equal to highest actionId + 1 | WORKFLOW |
 | 10 | All workflow names must start with `[VD]` prefix | GENERAL |
@@ -413,3 +422,44 @@ Owner IDs: Fetch dynamically via `list_portals` → `portal_capabilities`
 ### 2026-03-19 — WORKFLOW — ✅ Complete Quote-Signed Deal Update (CONFIRMED WORKING — reverse-engineered from manual fix)
 **What:** PLATFORM_FLOW deal workflow. Enrollment: Deal associated to any Quote where hs_esign_date is today (ASSOCIATION + TIME_RANGED). Actions: Set t_c_s_approved=true (STATIC_VALUE) → Set tcs_approved_date=hs_lastmodifieddate (OBJECT_PROPERTY). Re-enrollment enabled.
 **Pattern:** For "when quote is signed → update deal": use ASSOCIATION enrollment on Quote (0-14) with TIME_RANGED date filter, NOT a boolean property trigger. This is the correct HubSpot pattern for quote-triggered deal workflows.
+
+---
+
+### 2026-03-19 — WORKFLOW — 0-5 Set Property field format uses property_name + value
+**Trigger:** Deploying workflow with Set Property action on deal
+**Failed because:** Used property name as the field key: `"acquisition_status": {"type": "STATIC_VALUE", "staticValue": "acquired"}` — causes "internal error"
+**Fix:** Use separate `property_name` and `value` fields:
+```json
+{
+  "actionTypeId": "0-5",
+  "actionTypeVersion": 0,
+  "type": "SINGLE_CONNECTION",
+  "fields": {
+    "property_name": "acquisition_status",
+    "value": {"type": "STATIC_VALUE", "staticValue": "acquired"}
+  }
+}
+```
+**Pattern:** 0-5 fields ALWAYS use `property_name` string + `value` object — never use the property name as the key
+
+---
+
+### 2026-03-19 — WORKFLOW — 0-35 Delay Until Date unavailable on some portals
+**Trigger:** Deploying workflow with 0-35 action for date-based inspection reminders
+**Failed because:** Action type 0-35 returns "internal error" — not listed in `deep_health_check` available action types
+**Fix:** Deploy workflows without delay actions. User adds "Delay until date" steps manually in HubSpot UI. Always check `deep_health_check` before using any action type.
+**Pattern:** 0-35 is unavailable on some portals — always verify via `deep_health_check` available action types list before using
+
+---
+
+### 2026-03-19 — WORKFLOW — Orphaned actions cause "Invalid request to flow creation"
+**Trigger:** Deploying workflow where action 3 existed but was not reachable (action 2 was terminal)
+**Failed because:** HubSpot v4 API rejects workflows with disconnected/orphaned actions
+**Fix:** Ensure every action is reachable. Terminal actions must omit the `connection` field entirely.
+**Pattern:** All actions must be connected in a reachable chain from startActionId — no orphaned actions, terminal actions omit connection field
+
+---
+
+### 2026-03-19 — WORKFLOW — ✅ Deal PLATFORM_FLOW with Set Property + Internal Email chain (CONFIRMED WORKING)
+**What:** PLATFORM_FLOW deal workflow with MANUAL enrollment. Action chain: Set acquisition_status via 0-5 (property_name + value format) → Set acquisition_date via 0-5 (TIMESTAMP/EXECUTION_TIME) → Internal email via 0-8 with {{ enrolled_object.X }} tokens. Terminal action omits connection field.
+**Pattern:** Deal PLATFORM_FLOW works for linear action chains (no LIST_BRANCH). Use property_name + value format for 0-5. Terminal action has no connection field.
