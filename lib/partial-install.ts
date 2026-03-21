@@ -203,12 +203,8 @@ export function preStripBrokenActions(
   }
 
   const cleaned = stripActionsAndRelink(payload, actionsToRemove);
-  const manualSteps: ManualStep[] = strippedActions.map((sa) => ({
-    step: sa.manualStep,
-    priority: "required" as const,
-  }));
 
-  return { payload: cleaned, strippedActions, manualSteps };
+  return { payload: cleaned, strippedActions, manualSteps: buildManualSteps(strippedActions) };
 }
 
 // ---------------------------------------------------------------------------
@@ -242,6 +238,10 @@ export interface PartialWorkflowInstallResult {
 
 function getActionTypeLabel(actionTypeId: string): string {
   return ACTION_TYPE_LABELS[actionTypeId] ?? `Action type ${actionTypeId}`;
+}
+
+function buildManualSteps(stripped: StrippedAction[]): ManualStep[] {
+  return stripped.map((sa) => ({ step: sa.manualStep, priority: "required" as const }));
 }
 
 function buildManualStep(
@@ -596,15 +596,11 @@ export async function attemptPartialWorkflowInstall(
     ) as WorkflowAction[];
 
     if (remaining.length === 0) {
-      const manualSteps: ManualStep[] = allStrippedActions.map((sa) => ({
-        step: sa.manualStep,
-        priority: "required" as const,
-      }));
       return {
         status: "failed",
         installedActionIds: [],
         strippedActions: allStrippedActions,
-        manualSteps,
+        manualSteps: buildManualSteps(allStrippedActions),
         attemptsNeeded: attempts,
         error: "All actions were stripped — no deployable actions remain",
         parseSucceeded: true,
@@ -632,17 +628,12 @@ export async function attemptPartialWorkflowInstall(
         Array.isArray(currentPayload.actions) ? currentPayload.actions : []
       ) as WorkflowAction[];
 
-      const manualSteps: ManualStep[] = allStrippedActions.map((sa) => ({
-        step: sa.manualStep,
-        priority: "required" as const,
-      }));
-
       return {
         flowId,
         status: allStrippedActions.length > 0 ? "partial" : "success",
         installedActionIds: installedActions.map((a) => String(a.actionId ?? "")),
         strippedActions: allStrippedActions,
-        manualSteps,
+        manualSteps: buildManualSteps(allStrippedActions),
         attemptsNeeded: attempts,
       };
     } catch (error) {
@@ -675,15 +666,11 @@ export async function attemptPartialWorkflowInstall(
 
       if (actionsToRemove.size === 0) {
         // Cannot identify which actions are at fault — give up
-        const manualSteps: ManualStep[] = allStrippedActions.map((sa) => ({
-          step: sa.manualStep,
-          priority: "required" as const,
-        }));
         return {
           status: "failed",
           installedActionIds: [],
           strippedActions: allStrippedActions,
-          manualSteps,
+          manualSteps: buildManualSteps(allStrippedActions),
           attemptsNeeded: attempts,
           error: rawMessage,
         };
@@ -714,15 +701,11 @@ export async function attemptPartialWorkflowInstall(
       ) as WorkflowAction[];
 
       if (remaining.length === 0) {
-        const manualSteps: ManualStep[] = allStrippedActions.map((sa) => ({
-          step: sa.manualStep,
-          priority: "required" as const,
-        }));
         return {
           status: "failed",
           installedActionIds: [],
           strippedActions: allStrippedActions,
-          manualSteps,
+          manualSteps: buildManualSteps(allStrippedActions),
           attemptsNeeded: attempts,
           error: "All actions were stripped — no deployable actions remain",
         };
@@ -731,15 +714,11 @@ export async function attemptPartialWorkflowInstall(
   }
 
   // Exhausted retries
-  const manualSteps: ManualStep[] = allStrippedActions.map((sa) => ({
-    step: sa.manualStep,
-    priority: "required" as const,
-  }));
   return {
     status: "failed",
     installedActionIds: [],
     strippedActions: allStrippedActions,
-    manualSteps,
+    manualSteps: buildManualSteps(allStrippedActions),
     attemptsNeeded: attempts,
     error: "Maximum retry attempts reached during partial install",
   };

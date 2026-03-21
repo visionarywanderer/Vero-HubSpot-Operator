@@ -58,6 +58,10 @@ export function normalizeWorkflowDefaults(spec: WorkflowSpec): WorkflowSpec {
     suppressionListIds: spec.suppressionListIds ?? [],
     timeWindows: spec.timeWindows ?? [],
     blockedDates: spec.blockedDates ?? [],
+    // HubSpot v4 API requires nextAvailableActionId as a string
+    ...(spec.nextAvailableActionId != null
+      ? { nextAvailableActionId: String(spec.nextAvailableActionId) }
+      : {}),
   };
 }
 
@@ -192,7 +196,7 @@ class HubSpotWorkflowEngine implements WorkflowEngine {
       return { success: false, errors: ["Deploy failed: flowId missing in response"] };
     }
 
-    const deployed = await this.get(flowId);
+    const deployed = await this.get(flowId).catch(() => ({} as WorkflowSpec));
 
     const portalId = authManager.getActivePortal().id;
     const artifactName = String(safeSpec.name || "workflow-spec");
@@ -255,7 +259,7 @@ class HubSpotWorkflowEngine implements WorkflowEngine {
         return { success: false, errors: ["Deploy failed: flowId missing in response"] };
       }
 
-      const deployed = await this.get(flowId);
+      const deployed = await this.get(flowId).catch(() => ({} as WorkflowSpec));
       await saveWorkflowSpecArtifact(portalId, workflowName, safeSpec);
       await changeLogger.log({
         portalId,
@@ -411,7 +415,7 @@ class HubSpotWorkflowEngine implements WorkflowEngine {
 
     const safeSpec = normalizeWorkflowDefaults(spec);
     await apiClient.workflows.update(flowId, safeSpec);
-    const deployed = await this.get(flowId);
+    const deployed = await this.get(flowId).catch(() => ({} as WorkflowSpec));
 
     await changeLogger.log({
       portalId: authManager.getActivePortal().id,
