@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { isAuthenticated } from "@/lib/api-auth";
 import { authManager } from "@/lib/auth-manager";
 import { generateScopeUpgradeUrl, getRequiredScopes, getOptionalScopes } from "@/lib/hubspot-scopes";
+import type { RouteContext } from "@/lib/route-helpers";
 
-export async function GET(_req: Request, context: any) {
+export async function GET(_req: Request, context: RouteContext<{ portalId: string }>) {
   const params = await context.params;
   if (!(await isAuthenticated())) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
@@ -41,7 +42,7 @@ export async function GET(_req: Request, context: any) {
 }
 
 /** POST with a specific missing scope to get a targeted upgrade URL */
-export async function POST(req: Request, context: any) {
+export async function POST(req: Request, context: RouteContext<{ portalId: string }>) {
   const params = await context.params;
   if (!(await isAuthenticated())) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 

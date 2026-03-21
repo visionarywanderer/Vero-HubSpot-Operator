@@ -1,13 +1,10 @@
 import { NextResponse } from "next/server";
 import { isAuthenticated } from "@/lib/api-auth";
 import { authManager } from "@/lib/auth-manager";
-import { pipelineManager, type PipelineObjectType } from "@/lib/pipeline-manager";
+import { pipelineManager } from "@/lib/pipeline-manager";
+import { parseObjectType, type RouteContext } from "@/lib/route-helpers";
 
-function parseObjectType(value: string): PipelineObjectType | null {
-  return value === "deals" || value === "tickets" ? value : null;
-}
-
-export async function PATCH(req: Request, context: any) {
+export async function PATCH(req: Request, context: RouteContext<{ objectType: string; pipelineId: string; stageId: string }>) {
   const params = await context.params;
   if (!(await isAuthenticated())) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 

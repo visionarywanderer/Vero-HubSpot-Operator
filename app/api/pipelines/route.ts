@@ -3,10 +3,7 @@ import { isAuthenticated } from "@/lib/api-auth";
 import { authManager } from "@/lib/auth-manager";
 import { pipelineManager, type PipelineObjectType } from "@/lib/pipeline-manager";
 import { resolvePortalId } from "@/lib/active-portal";
-
-function parseObjectType(value: string | null): PipelineObjectType | null {
-  return value === "deals" || value === "tickets" ? value : null;
-}
+import { parseObjectType } from "@/lib/route-helpers";
 
 export async function GET(req: Request) {
   if (!(await isAuthenticated())) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });

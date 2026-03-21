@@ -3,6 +3,7 @@ import { isAuthenticated } from "@/lib/api-auth";
 import { authManager } from "@/lib/auth-manager";
 import { changeLogger } from "@/lib/change-logger";
 import { hubSpotClient } from "@/lib/api-client";
+import type { RouteContext } from "@/lib/route-helpers";
 
 function totalFrom(data: unknown): number {
   if (!data || typeof data !== "object") return 0;
@@ -10,7 +11,7 @@ function totalFrom(data: unknown): number {
   return typeof payload.total === "number" ? payload.total : 0;
 }
 
-export async function GET(_req: Request, context: any) {
+export async function GET(_req: Request, context: RouteContext<{ hubId: string }>) {
   const params = await context.params;
   if (!(await isAuthenticated())) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 

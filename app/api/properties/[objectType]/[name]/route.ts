@@ -2,12 +2,9 @@ import { NextResponse } from "next/server";
 import { isAuthenticated } from "@/lib/api-auth";
 import { authManager } from "@/lib/auth-manager";
 import { propertyManager } from "@/lib/property-manager";
+import { portalFromUrl, type RouteContext } from "@/lib/route-helpers";
 
-function portalFromUrl(req: Request): string | null {
-  return new URL(req.url).searchParams.get("portalId");
-}
-
-export async function PATCH(req: Request, context: any) {
+export async function PATCH(req: Request, context: RouteContext<{ objectType: string; name: string }>) {
   const params = await context.params;
   if (!(await isAuthenticated())) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
@@ -22,7 +19,7 @@ export async function PATCH(req: Request, context: any) {
   return NextResponse.json({ ok: true, property });
 }
 
-export async function DELETE(req: Request, context: any) {
+export async function DELETE(req: Request, context: RouteContext<{ objectType: string; name: string }>) {
   const params = await context.params;
   if (!(await isAuthenticated())) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
