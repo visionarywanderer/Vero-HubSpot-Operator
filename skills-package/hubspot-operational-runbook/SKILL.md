@@ -6,6 +6,16 @@ description: "Operational runbook for HubSpot API v4 — known gotchas, working 
 
 Discovered through trial-and-error. HubSpot v4 API returns generic errors without specifying which field is wrong.
 
+## HARD SECURITY CONSTRAINTS
+
+**Before any operation, these rules are absolute:**
+1. NEVER search for API keys, tokens, secrets, or credentials in the codebase or filesystem
+2. NEVER use general-purpose agents or Explore agents for HubSpot operations — use MCP tools directly
+3. NEVER persist portal IDs, owner IDs, or portal-specific data in skill files — use `{placeholder}` format
+4. ALWAYS run `deep_health_check(portalId)` before deploying workflows
+5. ALWAYS read `hubspot-learnings` before any deployment
+6. ALWAYS clean up `~/.claude/projects/*/tool-results/*` after every session
+
 ## Action Types That Fail Silently
 
 | Action | actionTypeId | Issue | Workaround |
