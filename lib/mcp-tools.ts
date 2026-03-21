@@ -426,6 +426,46 @@ server.tool(
 );
 
 // ---------------------------------------------------------------------------
+// List Member Management Tools
+// ---------------------------------------------------------------------------
+
+server.tool(
+  "add_list_members",
+  "Add records to a manual/static list by record IDs",
+  {
+    listId: z.string().describe("The list ID to add members to"),
+    recordIds: z.array(z.string()).describe("Record IDs to add to the list"),
+    portalId: z.string().optional().describe("Portal ID. Omit to use the active portal set via set_active_portal."),
+  },
+  async ({ listId, recordIds, portalId }) => {
+    const data = await api({
+      method: "PUT",
+      path: `/api/lists/${encodeURIComponent(listId)}/memberships/add`,
+      body: { recordIds, portalId },
+    });
+    return textResult(data);
+  }
+);
+
+server.tool(
+  "remove_list_members",
+  "Remove records from a manual/static list by record IDs",
+  {
+    listId: z.string().describe("The list ID to remove members from"),
+    recordIds: z.array(z.string()).describe("Record IDs to remove from the list"),
+    portalId: z.string().optional().describe("Portal ID. Omit to use the active portal set via set_active_portal."),
+  },
+  async ({ listId, recordIds, portalId }) => {
+    const data = await api({
+      method: "PUT",
+      path: `/api/lists/${encodeURIComponent(listId)}/memberships/remove`,
+      body: { recordIds, portalId },
+    });
+    return textResult(data);
+  }
+);
+
+// ---------------------------------------------------------------------------
 // Workflow Tools
 // ---------------------------------------------------------------------------
 
@@ -539,6 +579,100 @@ server.tool(
       method: "GET",
       path: `/api/workflows/${flowId}`,
       query: portalId ? { portalId } : undefined,
+    });
+    return textResult(data);
+  }
+);
+
+server.tool(
+  "get_workflow_by_name",
+  [
+    "Find a workflow by name (case-insensitive partial match).",
+    "Returns the matching workflow summary. Use get_workflow with the flowId to get the full spec.",
+  ].join("\n"),
+  {
+    name: z.string().describe("Workflow name to search for (case-insensitive partial match)"),
+    portalId: z.string().optional().describe("Portal ID. Omit to use the active portal set via set_active_portal."),
+  },
+  async ({ name, portalId }) => {
+    const data = await api({
+      method: "POST",
+      path: "/api/workflows/search",
+      body: { name, portalId },
+    });
+    return textResult(data);
+  }
+);
+
+server.tool(
+  "clone_workflow",
+  [
+    "Clone an existing workflow under a new name.",
+    "Fetches the full spec of the source workflow, replaces the name,",
+    "and deploys it as a new workflow (disabled). Useful for creating",
+    "variations of working workflows.",
+  ].join("\n"),
+  {
+    sourceFlowId: z.string().describe("Flow ID of the workflow to clone"),
+    newName: z.string().describe("Name for the cloned workflow (should include [VD] prefix)"),
+    portalId: z.string().optional().describe("Portal ID. Omit to use the active portal set via set_active_portal."),
+  },
+  async ({ sourceFlowId, newName, portalId }) => {
+    const data = await api({
+      method: "POST",
+      path: "/api/workflows/clone",
+      body: { sourceFlowId, newName, portalId },
+    });
+    return textResult(data);
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Batch Delete Records Tool
+// ---------------------------------------------------------------------------
+
+server.tool(
+  "batch_delete_records",
+  "Delete (archive) CRM records in batch by IDs (up to 100 per call)",
+  {
+    objectType: z.string().describe("contacts, companies, deals, tickets, etc."),
+    ids: z.array(z.string()).describe("Array of record IDs to delete"),
+    portalId: z.string().optional().describe("Portal ID. Omit to use the active portal set via set_active_portal."),
+  },
+  async ({ objectType, ids, portalId }) => {
+    const data = await api({
+      method: "POST",
+      path: "/api/records/batch-delete",
+      body: { objectType, ids, portalId },
+    });
+    return textResult(data);
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Template Export Tool (reverse-engineer portal → template)
+// ---------------------------------------------------------------------------
+
+server.tool(
+  "export_portal_template",
+  [
+    "Export the current portal configuration as a reusable template.",
+    "Reads custom properties, property groups, pipelines, lists, and workflows",
+    "from the portal and generates a TemplateDefinition that can be saved and",
+    "installed on another portal via install_template.",
+  ].join("\n"),
+  {
+    name: z.string().describe("Name for the exported template"),
+    objectTypes: z.array(z.string()).optional().describe("Object types to include (default: contacts, companies, deals, tickets)"),
+    includeWorkflows: z.boolean().optional().describe("Include workflows in export (default: true)"),
+    includeLists: z.boolean().optional().describe("Include lists in export (default: true)"),
+    portalId: z.string().optional().describe("Portal ID. Omit to use the active portal set via set_active_portal."),
+  },
+  async ({ name, objectTypes, includeWorkflows, includeLists, portalId }) => {
+    const data = await api({
+      method: "POST",
+      path: "/api/templates/export",
+      body: { name, objectTypes, includeWorkflows, includeLists, portalId },
     });
     return textResult(data);
   }

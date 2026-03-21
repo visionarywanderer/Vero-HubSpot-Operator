@@ -2,7 +2,7 @@
  * Template Store — loads templates and packs from the filesystem.
  */
 
-import { readdir, readFile } from "fs/promises";
+import { readdir, readFile, writeFile, mkdir } from "fs/promises";
 import { join } from "path";
 import type { TemplateDefinition, PackDefinition } from "@/lib/template-types";
 
@@ -30,6 +30,7 @@ async function loadJsonFile<T>(filePath: string): Promise<T | null> {
 export interface TemplateStore {
   listTemplates(): Promise<TemplateDefinition[]>;
   getTemplate(id: string): Promise<TemplateDefinition | null>;
+  saveTemplate(template: TemplateDefinition): Promise<void>;
   listPacks(): Promise<PackDefinition[]>;
   getPack(id: string): Promise<PackDefinition | null>;
 }
@@ -73,6 +74,17 @@ class FileSystemTemplateStore implements TemplateStore {
     // Fallback: scan all templates
     const all = await this.listTemplates();
     return all.find((t) => t.id === id) ?? null;
+  }
+
+  async saveTemplate(template: TemplateDefinition): Promise<void> {
+    const safeId = (template.id || "untitled").replace(/[^a-zA-Z0-9_-]/g, "_");
+    await mkdir(TEMPLATES_DIR, { recursive: true });
+    const filePath = join(TEMPLATES_DIR, `${safeId}.json`);
+    // Verify path stays within TEMPLATES_DIR
+    if (!filePath.startsWith(TEMPLATES_DIR)) {
+      throw new Error("Invalid template ID");
+    }
+    await writeFile(filePath, JSON.stringify(template, null, 2), "utf-8");
   }
 
   async listPacks(): Promise<PackDefinition[]> {

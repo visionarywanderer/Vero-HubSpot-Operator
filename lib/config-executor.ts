@@ -154,11 +154,23 @@ async function executePipeline(spec: PipelineResourceSpec, cache: ResourceCache)
 async function getCachedWorkflowNames(cache: ResourceCache): Promise<Set<string>> {
   if (cache.workflowNames) return cache.workflowNames;
   try {
-    const response = await hubSpotClient.get("/automation/v4/flows", { limit: 500 });
-    const data = response.data as { results?: Array<{ name?: string }> };
-    cache.workflowNames = new Set(
-      (data.results || []).map((w) => String(w.name || "")).filter(Boolean)
-    );
+    const names: string[] = [];
+    let after: string | undefined;
+
+    // Paginate through all workflows instead of relying on a single large limit
+    do {
+      const params: Record<string, unknown> = { limit: 100 };
+      if (after) params.after = after;
+      const response = await hubSpotClient.get("/automation/v4/flows", params);
+      const data = response.data as { results?: Array<{ name?: string }>; paging?: { next?: { after?: string } } };
+      for (const w of data.results || []) {
+        const name = String(w.name || "");
+        if (name) names.push(name);
+      }
+      after = data.paging?.next?.after;
+    } while (after);
+
+    cache.workflowNames = new Set(names);
   } catch {
     // Don't cache on error — let the next caller retry
     return new Set();
@@ -317,10 +329,25 @@ async function executeResource(resource: ResolvedResource, cache: ResourceCache)
 
 // --- Core Execution ---
 
+export interface ProgressUpdate {
+  /** Current resource being processed */
+  resource: string;
+  /** 0-100 percent complete */
+  percent: number;
+  /** Total resources to process */
+  total: number;
+  /** Resources completed so far */
+  completed: number;
+  /** Current status */
+  status: "processing" | "success" | "error" | "skipped";
+}
+
+export type ProgressCallback = (update: ProgressUpdate) => void;
+
 export async function executeConfig(
   portalId: string,
   resources: TemplateResources,
-  options?: { dryRun?: boolean; templateId?: string }
+  options?: { dryRun?: boolean; templateId?: string; onProgress?: ProgressCallback }
 ): Promise<ExecutionReport> {
   const startedAt = new Date().toISOString();
 
@@ -382,6 +409,21 @@ export async function executeConfig(
     const results: ResourceExecutionResult[] = [];
     const failedKeys = new Set<string>();
     const cache = createResourceCache();
+    const totalResources = sorted.length;
+    const onProgress = options?.onProgress;
+
+    function emitProgress(key: string, status: ProgressUpdate["status"]) {
+      if (onProgress) {
+        const completed = results.length;
+        onProgress({
+          resource: key,
+          percent: totalResources > 0 ? Math.round((completed / totalResources) * 100) : 100,
+          total: totalResources,
+          completed,
+          status,
+        });
+      }
+    }
 
     // Group sorted resources into execution tiers: resources with all
     // dependencies already executed can run concurrently within a tier.
@@ -402,6 +444,7 @@ export async function executeConfig(
             status: "skipped",
             error: "Skipped due to dependency failure",
           });
+          emitProgress(resource.key, "skipped");
           failedKeys.add(resource.key);
           completedKeys.add(resource.key);
           continue;
@@ -420,6 +463,7 @@ export async function executeConfig(
         const [next, ...rest] = deferred;
         const result = await executeResource(next, cache);
         results.push(result);
+        emitProgress(next.key, result.status === "error" ? "error" : "success");
         if (result.status === "error") failedKeys.add(next.key);
         completedKeys.add(next.key);
         remaining = rest;
@@ -437,16 +481,25 @@ export async function executeConfig(
       );
       for (let i = 0; i < nonWorkflowResources.length; i++) {
         results.push(nonWfResults[i]);
+        emitProgress(nonWorkflowResources[i].key, nonWfResults[i].status === "error" ? "error" : "success");
         if (nonWfResults[i].status === "error") failedKeys.add(nonWorkflowResources[i].key);
         completedKeys.add(nonWorkflowResources[i].key);
       }
 
-      // Workflow resources: execute sequentially to avoid rate limits
-      for (const wfResource of workflowResources) {
-        const wfResult = await executeResource(wfResource, cache);
-        results.push(wfResult);
-        if (wfResult.status === "error") failedKeys.add(wfResource.key);
-        completedKeys.add(wfResource.key);
+      // Workflow resources: execute with concurrency limit of 3
+      // (each workflow already has a 3-second internal delay, so limited parallelism is safe)
+      const WF_CONCURRENCY = 3;
+      for (let i = 0; i < workflowResources.length; i += WF_CONCURRENCY) {
+        const batch = workflowResources.slice(i, i + WF_CONCURRENCY);
+        const batchResults = await Promise.all(
+          batch.map((resource) => executeResource(resource, cache))
+        );
+        for (let j = 0; j < batch.length; j++) {
+          results.push(batchResults[j]);
+          emitProgress(batch[j].key, batchResults[j].status === "error" ? "error" : "success");
+          if (batchResults[j].status === "error") failedKeys.add(batch[j].key);
+          completedKeys.add(batch[j].key);
+        }
       }
 
       remaining = deferred;

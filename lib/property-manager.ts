@@ -1,4 +1,6 @@
 import { apiClient, hubSpotClient } from "@/lib/api-client";
+import { getCachedProperties, setCachedProperties, invalidatePropertyCache } from "@/lib/property-cache";
+import { authManager } from "@/lib/auth-manager";
 
 export interface Property {
   name: string;
@@ -103,23 +105,41 @@ async function sampleRecords(objectType: string, propertyNames: string[], limit 
 
 class HubSpotPropertyManager implements PropertyManager {
   async list(objectType: string): Promise<Property[]> {
-    const response = await apiClient.properties.list(objectType);
-    const data = response.data as { results?: Property[] };
-    return data.results ?? [];
+    // Check session-scoped cache first (5-min TTL)
+    try {
+      const portalId = authManager.getActivePortal().id;
+      const cached = getCachedProperties(portalId, objectType);
+      if (cached) return cached;
+
+      const response = await apiClient.properties.list(objectType);
+      const data = response.data as { results?: Property[] };
+      const results = data.results ?? [];
+      setCachedProperties(portalId, objectType, results);
+      return results;
+    } catch {
+      // Fallback without caching if portal context not available
+      const response = await apiClient.properties.list(objectType);
+      const data = response.data as { results?: Property[] };
+      return data.results ?? [];
+    }
   }
 
   async create(objectType: string, spec: PropertySpec): Promise<Property> {
     const response = await apiClient.properties.create(objectType, spec);
+    // Invalidate cache so subsequent list() calls include the new property
+    try { invalidatePropertyCache(authManager.getActivePortal().id, objectType); } catch { /* ok */ }
     return response.data as Property;
   }
 
   async update(objectType: string, name: string, updates: Partial<PropertySpec>): Promise<Property> {
     const response = await apiClient.properties.update(objectType, name, updates);
+    try { invalidatePropertyCache(authManager.getActivePortal().id, objectType); } catch { /* ok */ }
     return response.data as Property;
   }
 
   async delete(objectType: string, name: string): Promise<void> {
     await apiClient.properties.delete(objectType, name);
+    try { invalidatePropertyCache(authManager.getActivePortal().id, objectType); } catch { /* ok */ }
   }
 
   async listGroups(objectType: string): Promise<PropertyGroup[]> {
