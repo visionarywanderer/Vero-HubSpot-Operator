@@ -102,10 +102,8 @@ server.tool(
   "Get the capabilities (granted scopes) for a specific portal",
   { portalId: z.string().optional().describe("Portal/Hub ID. Omit to use the first connected portal.") },
   async ({ portalId }) => {
-    const query: Record<string, string | undefined> = {};
-    if (portalId) query.portalId = portalId;
     const path = portalId ? `/api/portals/${encodeURIComponent(portalId)}/capabilities` : "/api/portals/capabilities";
-    const data = await api({ path, query: portalId ? undefined : query });
+    const data = await api({ path });
     return textResult(data);
   }
 );
