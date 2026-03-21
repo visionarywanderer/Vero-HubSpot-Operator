@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { isAuthenticated } from "@/lib/api-auth";
 import { authManager } from "@/lib/auth-manager";
-import { hubSpotClient } from "@/lib/api-client";
+import { hubSpotClient, sanitizePathSegment } from "@/lib/api-client";
 import { changeLogger } from "@/lib/change-logger";
 
 /** POST /api/records/batch-delete — Batch archive CRM records */
@@ -20,7 +20,7 @@ export async function POST(req: Request) {
   try {
     await authManager.withPortal(body.portalId, async () => {
       const inputs = body.ids!.map((id) => ({ id }));
-      await hubSpotClient.post(`/crm/v3/objects/${encodeURIComponent(body.objectType!)}/batch/archive`, { inputs });
+      await hubSpotClient.post(`/crm/v3/objects/${sanitizePathSegment(body.objectType!)}/batch/archive`, { inputs });
 
       await changeLogger.log({
         portalId: body.portalId!,

@@ -25,6 +25,7 @@ const NAV: NavGroup[] = [
       { label: "Pipelines", href: "/pipelines" },
       { label: "Workflows", href: "/workflows" },
       { label: "Lists & Segments", href: "/lists" },
+      { label: "Prompt Library", href: "/prompts" },
     ],
   },
   {
