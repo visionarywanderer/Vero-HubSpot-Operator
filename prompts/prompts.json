@@ -230,5 +230,424 @@
     "description": "Smart list of customers with no recent activity",
     "prompt": "Create smart list \"At Risk Customers\":\n- Lifecycle stage = Customer\n- No activity in 60 days\n- Has open ticket with priority High",
     "tags": ["lists", "customers", "churn"]
+  },
+  {
+    "id": "meeting-analysis-full",
+    "name": "Meeting Notes Analysis",
+    "category": "meeting",
+    "module": "M1",
+    "layer": "mcp",
+    "description": "Extract contacts, properties, pipelines, workflows, and lists from meeting notes into an implementation plan",
+    "prompt": "Paste meeting/discovery notes and extract:\n- Contacts mentioned (name, email, role, company)\n- Companies mentioned\n- Custom properties needed (with type, fieldType, object)\n- Pipelines needed (with stages, probabilities)\n- Workflows needed (with triggers, actions)\n- Lists needed (with filters, segmentation criteria)\n\nOutput a structured implementation plan with dependency order:\n1. Property Groups\n2. Properties\n3. Pipelines\n4. Lists\n5. Workflows\n\nFor each item include:\n- Name and description\n- Technical spec summary\n- Estimated effort (small/medium/large)\n- Dependencies on other items\n\nPresent the plan and wait for confirmation before proceeding to create any resources.",
+    "tags": ["meeting", "analysis", "planning", "implementation"]
+  },
+  {
+    "id": "meeting-action-items",
+    "name": "Meeting Action Items to Tasks",
+    "category": "meeting",
+    "module": "M1",
+    "layer": "mcp",
+    "description": "Extract action items from meeting notes and create HubSpot tasks",
+    "prompt": "Extract action items from the meeting notes provided. For each action item:\n- Identify the responsible person (owner)\n- Determine due date based on urgency mentioned\n- Set priority (HIGH/MEDIUM/LOW)\n- Write a clear task description\n\nSeparate action items into two groups:\n1. HubSpot tasks (things that need to be done inside HubSpot)\n2. External tasks (things outside HubSpot scope)\n\nFor HubSpot tasks, prepare to create them via the CRM API with:\n- Subject line\n- Task body with context from the meeting\n- Owner assignment\n- Due date\n- Priority\n\nShow the complete list of tasks with all details before creating. Wait for confirmation before creating any tasks.",
+    "tags": ["meeting", "tasks", "action items"]
+  },
+  {
+    "id": "meeting-crm-setup-plan",
+    "name": "CRM Setup Plan from Kickoff",
+    "category": "meeting",
+    "module": "M1",
+    "layer": "mcp",
+    "description": "Generate a complete CRM setup plan from client kickoff or discovery notes",
+    "prompt": "From client kickoff/discovery notes, generate a complete CRM setup plan:\n\n1. Property Groups to create (per object type)\n2. Custom Properties per object type (contacts, companies, deals, tickets) with:\n   - Internal name, label, type, fieldType\n   - Options for enumeration types\n   - Which group they belong to\n3. Deal Pipeline with stages:\n   - Stage names, display order, probabilities\n   - Closed Won and Closed Lost stages\n4. Ticket Pipeline (if support process discussed):\n   - Stage names for support workflow\n5. Key Workflows for automation:\n   - Trigger, actions, branching logic\n   - Named with [VD] prefix\n6. Smart Lists for segmentation:\n   - Filter criteria, dynamic vs manual\n\nOutput as a numbered checklist with dependency order. Each item should have:\n- [ ] checkbox format\n- Resource type label\n- Technical details\n- Dependencies noted\n\nWait for confirmation before executing any step.",
+    "tags": ["meeting", "kickoff", "crm setup", "planning"]
+  },
+  {
+    "id": "pipeline-create-deal",
+    "name": "Create Deal Pipeline",
+    "category": "pipeline",
+    "module": "C3",
+    "layer": "mcp",
+    "description": "Create a deal pipeline with stages, probabilities, and required Closed Won/Lost stages",
+    "prompt": "Create a deal pipeline named \"{pipelineName}\" with these stages: {stages}\n\nFor each stage, configure:\n- label: Stage name\n- displayOrder: Sequential starting from 0\n- probability: Between 0 and 1, increasing as stages progress\n\nMUST include these closing stages at the end:\n- Closed Won: probability 1.0, metadata: { \"isClosed\": \"true\", \"closedWon\": \"true\" }\n- Closed Lost: probability 0, metadata: { \"isClosed\": \"true\", \"closedWon\": \"false\" }\n\nValidation checks before deploying:\n- Probabilities should generally increase across stages\n- No duplicate stage names\n- Closed Won and Closed Lost are present\n\nDeploy via create_pipeline MCP tool. Report the created pipeline ID and stage IDs.",
+    "tags": ["pipeline", "deals", "setup"],
+    "parameters": [
+      { "name": "pipelineName", "default": "Sales Pipeline" },
+      { "name": "stages", "default": "Discovery, Qualification, Proposal, Negotiation, Closed Won, Closed Lost" }
+    ]
+  },
+  {
+    "id": "pipeline-create-ticket",
+    "name": "Create Ticket Pipeline",
+    "category": "pipeline",
+    "module": "C3",
+    "layer": "mcp",
+    "description": "Create a support ticket pipeline with standard stages",
+    "prompt": "Create a ticket pipeline named \"{pipelineName}\" with these stages: {stages}\n\nFor each stage, configure:\n- label: Stage name\n- displayOrder: Sequential starting from 0\n\nThe final stage MUST have metadata: { \"isClosed\": \"true\" }\nAll other stages should NOT have isClosed metadata.\n\nTypical ticket pipeline stages if none specified:\n- New (displayOrder: 0)\n- Waiting on Contact (displayOrder: 1)\n- Waiting on Us (displayOrder: 2)\n- In Progress (displayOrder: 3)\n- Closed (displayOrder: 4, isClosed: true)\n\nDeploy via create_pipeline MCP tool for objectType \"tickets\".",
+    "tags": ["pipeline", "tickets", "support", "setup"],
+    "parameters": [
+      { "name": "pipelineName", "default": "Support Pipeline" },
+      { "name": "stages", "default": "New, Waiting on Contact, Waiting on Us, In Progress, Closed" }
+    ]
+  },
+  {
+    "id": "pipeline-audit-fix",
+    "name": "Pipeline Audit & Fix",
+    "category": "pipeline",
+    "module": "C3",
+    "layer": "mcp",
+    "description": "Audit all pipelines for missing stages, configuration issues, and recommend fixes",
+    "prompt": "List all deal and ticket pipelines using list_pipelines for both objectTypes.\n\nFor each pipeline, check:\n- Missing Closed Won stage (deals only) — CRITICAL\n- Missing Closed Lost stage (deals only) — CRITICAL\n- Stages with 0% probability that are NOT Closed Lost — WARNING\n- Duplicate stage names within the same pipeline — WARNING\n- Stages with probability not increasing in display order — INFO\n- Empty pipelines with no associated records — INFO\n\nRun audit_pipelines for both deals and tickets to get additional insights.\n\nReport findings grouped by severity (CRITICAL, WARNING, INFO).\nFor each finding, provide:\n- Pipeline name and ID\n- Issue description\n- Recommended fix\n- Whether the fix can be automated",
+    "tags": ["pipeline", "audit", "health check"]
+  },
+  {
+    "id": "pipeline-stage-reorder",
+    "name": "Reorder Pipeline Stages",
+    "category": "pipeline",
+    "module": "C3",
+    "layer": "mcp",
+    "description": "View and reorder pipeline stages with validation",
+    "prompt": "List current stages for {objectType} pipeline {pipelineId}.\n\nShow current order as a numbered list with:\n- Stage name\n- Current displayOrder\n- Probability (deals only)\n- isClosed status\n\nAccept a new order from the user (e.g., \"3, 1, 2, 4, 5\" to reorder).\n\nValidation before applying:\n- Closed stages (isClosed=true) must remain at the end\n- Probabilities should still make logical sense in new order\n- No stages can be removed during reorder\n\nUpdate displayOrder values via the pipeline API. Show the updated order for confirmation.",
+    "tags": ["pipeline", "stages", "reorder"],
+    "parameters": [
+      { "name": "objectType", "default": "deals", "options": ["deals", "tickets"] },
+      { "name": "pipelineId" }
+    ]
+  },
+  {
+    "id": "workflow-search-by-name",
+    "name": "Search Workflows",
+    "category": "workflow-management",
+    "module": "B3",
+    "layer": "mcp",
+    "description": "Search all workflows by name pattern and show key details",
+    "prompt": "Search all workflows matching the name pattern \"{pattern}\".\n\nList all workflows using list_workflows. Filter results where the workflow name contains \"{pattern}\" (case-insensitive).\n\nFor each match, show:\n- Name\n- Flow ID\n- Type (CONTACT_FLOW / PLATFORM_FLOW)\n- Enabled/Disabled status\n- Object type (contacts, deals, companies, tickets)\n- Brief enrollment criteria summary\n\nSort by name. Show total count of matches.\n\nThis is useful for finding existing workflows before creating duplicates or for locating workflows to clone/modify.",
+    "tags": ["workflow", "search", "management"],
+    "parameters": [
+      { "name": "pattern", "default": "[VD]" }
+    ]
+  },
+  {
+    "id": "workflow-clone-existing",
+    "name": "Clone Workflow",
+    "category": "workflow-management",
+    "module": "B3",
+    "layer": "mcp",
+    "description": "Clone an existing workflow under a new name with [VD] prefix",
+    "prompt": "Clone workflow with flow ID {flowId} as \"[VD] {newName}\".\n\nSteps:\n1. Get the full spec of the source workflow using get_workflow\n2. Show the source workflow summary: name, type, enrollment criteria, number of actions\n3. Change the name to \"[VD] {newName}\"\n4. Deploy as a new workflow (always disabled)\n5. Report the new flow ID\n\nIf the source workflow uses any broken action types (0-9 in-app notification, 0-11 rotate owner), flag them and suggest replacements before deploying.",
+    "tags": ["workflow", "clone", "management"],
+    "parameters": [
+      { "name": "flowId" },
+      { "name": "newName" }
+    ]
+  },
+  {
+    "id": "workflow-toggle-state",
+    "name": "Enable/Disable Workflows",
+    "category": "workflow-management",
+    "module": "B3",
+    "layer": "mcp",
+    "description": "List workflow states and toggle enable/disable for specific workflows",
+    "prompt": "List all workflows using list_workflows. Show a table with:\n- Flow ID\n- Name\n- Enabled/Disabled status\n- Type\n\nFilter to show only workflows matching the action: if {action} is \"enable\", show disabled workflows. If {action} is \"disable\", show enabled workflows.\n\nFor workflow {flowId}:\n- If enabling: WARN that enabling a workflow immediately starts enrolling matching records. Confirm before proceeding.\n- If disabling: Proceed with confirmation.\n\nNote: The MCP tools may not support direct enable/disable. If not available, provide the manual steps to toggle in HubSpot UI.",
+    "tags": ["workflow", "enable", "disable", "management"],
+    "parameters": [
+      { "name": "action", "default": "disable", "options": ["enable", "disable"] },
+      { "name": "flowId" }
+    ]
+  },
+  {
+    "id": "workflow-audit-actions",
+    "name": "Workflow Actions Audit",
+    "category": "workflow-management",
+    "module": "B3",
+    "layer": "mcp",
+    "description": "Analyze a workflow's actions for broken types, invalid references, and issues",
+    "prompt": "Get the full spec of workflow {flowId} using get_workflow.\n\nAnalyze the workflow and report:\n\n1. Action Types Used:\n   - List each action with: actionId, type, actionTypeId, brief description\n   - Flag any using broken types:\n     * 0-9 (In-app notification) — BROKEN, replace with 0-8 (Internal email)\n     * 0-11 (Rotate owner) — BROKEN, replace with 0-5 (Set property on hubspot_owner_id)\n\n2. Enrollment Criteria:\n   - Show the enrollment trigger\n   - Validate filter structure (OR → AND → filters hierarchy)\n   - Check operationType matches property type\n\n3. Property References:\n   - List all properties referenced in enrollment criteria and actions\n   - Verify each property exists using list_properties\n   - Flag missing properties\n\n4. Branching Logic:\n   - Map the action flow: start → branches → end\n   - Check for dead-end actions (no connection to next action)\n   - Verify IF_BRANCH has both acceptActions and rejectActions\n\nProvide fix recommendations for each issue found.",
+    "tags": ["workflow", "audit", "actions", "validation"],
+    "parameters": [
+      { "name": "flowId" }
+    ]
+  },
+  {
+    "id": "workflow-dependency-map",
+    "name": "Workflow Dependency Map",
+    "category": "workflow-management",
+    "module": "B3",
+    "layer": "mcp",
+    "description": "Map all workflow dependencies on properties, pipelines, and lists",
+    "prompt": "List all workflows using list_workflows. For each workflow, get the full spec using get_workflow.\n\nExtract and catalog:\n1. Properties referenced in enrollment criteria (filter conditions)\n2. Properties set by SET_PROPERTY actions\n3. Properties read in IF_BRANCH conditions\n4. Pipelines/stages referenced in enrollment or actions\n5. Lists referenced in enrollment criteria\n6. Other workflows referenced (if any chaining)\n\nOutput a dependency matrix:\n\n**Properties → Workflows that READ them:**\n(property name → list of workflow names)\n\n**Properties → Workflows that WRITE them:**\n(property name → list of workflow names)\n\n**Pipelines → Workflows:**\n(pipeline/stage → list of workflow names)\n\n**Lists → Workflows:**\n(list name → list of workflow names)\n\nHighlight:\n- Properties that are written by one workflow and read by another (chains)\n- Properties referenced by workflows but that don't exist in the portal\n- Circular dependencies between workflows",
+    "tags": ["workflow", "dependencies", "mapping", "analysis"]
+  },
+  {
+    "id": "template-create-bundle",
+    "name": "Create Template Bundle",
+    "category": "template",
+    "module": "E1",
+    "layer": "mcp",
+    "description": "Bundle properties, pipelines, workflows, and lists into a reusable template",
+    "prompt": "Create a reusable template bundle named \"{templateName}\".\n\nDescription: {description}\n\nSteps:\n1. Ask which resources to include:\n   - Properties (list available custom properties)\n   - Pipelines (list available pipelines)\n   - Workflows (list available workflows)\n   - Lists (list available lists)\n\n2. For each selected resource, fetch the full spec.\n\n3. Validate dependencies:\n   - If a workflow references a property, that property MUST be in the template\n   - If a workflow references a pipeline stage, that pipeline MUST be in the template\n   - If a workflow references a list, that list MUST be in the template\n   - Flag any missing dependencies\n\n4. Save as a template draft using save_template_draft with:\n   - name\n   - description\n   - version tag\n   - all resource specs bundled\n\nReport the template ID and contents summary.",
+    "tags": ["template", "bundle", "reusable", "packaging"],
+    "parameters": [
+      { "name": "templateName", "default": "CRM Template" },
+      { "name": "description", "default": "Reusable CRM configuration template" }
+    ]
+  },
+  {
+    "id": "template-install-dryrun",
+    "name": "Dry-Run Template Install",
+    "category": "template",
+    "module": "E1",
+    "layer": "mcp",
+    "description": "Preview what a template install would create without making changes",
+    "prompt": "Run a dry-run install of template {templateId} on the active portal.\n\nUse install_template with dryRun: true.\n\nReport:\n1. Resources that WOULD be created:\n   - Properties (name, type, object)\n   - Pipelines (name, stages count)\n   - Workflows (name, type)\n   - Lists (name, type)\n\n2. Resources that already EXIST (would be skipped):\n   - Show matching existing resource name and ID\n\n3. Potential CONFLICTS:\n   - Properties with same internal name but different type\n   - Pipelines with same name\n   - Workflows with same name\n\nDo NOT create anything. This is a preview only.\n\nAsk if the user wants to proceed with the actual install after reviewing.",
+    "tags": ["template", "dry-run", "preview", "install"],
+    "parameters": [
+      { "name": "templateId" }
+    ]
+  },
+  {
+    "id": "template-export-portal",
+    "name": "Export Portal Config",
+    "category": "template",
+    "module": "E1",
+    "layer": "mcp",
+    "description": "Export the current portal's full configuration as a reusable template",
+    "prompt": "Export the current portal's complete configuration as a reusable template named \"{templateName}\".\n\nUse export_portal_template to capture:\n- All custom property groups\n- All custom properties (contacts, companies, deals, tickets)\n- All deal pipelines with stages\n- All ticket pipelines with stages\n- All automation workflows (names, enrollment criteria, actions)\n- All active lists (dynamic and manual)\n\nSave as a template draft.\n\nReport summary:\n- Total properties exported (by object type)\n- Total pipelines exported (deals + tickets)\n- Total workflows exported\n- Total lists exported\n- Template ID for future reference\n\nNote: Owner IDs and form IDs in workflows will need to be reconfigured when installing on a different portal.",
+    "tags": ["template", "export", "portal", "backup"],
+    "parameters": [
+      { "name": "templateName", "default": "Portal Export" }
+    ]
+  },
+  {
+    "id": "template-version-compare",
+    "name": "Compare Template Versions",
+    "category": "template",
+    "module": "E1",
+    "layer": "api",
+    "description": "Compare two versions of a template to see added, removed, and modified resources",
+    "prompt": "Compare template {templateId} version {v1} vs version {v2}.\n\nFor each resource type (properties, pipelines, workflows, lists), show:\n\n**Added in v{v2}:**\n- Resources present in v{v2} but not in v{v1}\n\n**Removed in v{v2}:**\n- Resources present in v{v1} but not in v{v2}\n\n**Modified:**\n- Resources present in both but with differences\n- Show before (v{v1}) and after (v{v2}) for each change\n\n**Breaking Changes:**\n- Properties with type changes (cannot be changed after creation)\n- Removed properties that are referenced by workflows in v{v2}\n- Pipeline stage removals that may affect existing deals\n\nProvide a migration recommendation: safe to upgrade, needs review, or breaking changes require manual intervention.",
+    "tags": ["template", "compare", "versions", "diff"],
+    "parameters": [
+      { "name": "templateId" },
+      { "name": "v1", "default": "1" },
+      { "name": "v2", "default": "2" }
+    ]
+  },
+  {
+    "id": "record-search-filter",
+    "name": "Search CRM Records",
+    "category": "record",
+    "module": "A1",
+    "layer": "mcp",
+    "description": "Search CRM records with filters and display results in a table",
+    "prompt": "Search {objectType} records matching filter:\n- Property: {filterProperty}\n- Operator: {operator}\n- Value: {filterValue}\n\nReturn these properties: {properties}\n\nUse search_records with the appropriate filter. Show the first 20 results in a formatted table.\n\nIf more than 20 results exist, show the total count and offer to paginate.\n\nSupported operators: EQ, NEQ, LT, LTE, GT, GTE, CONTAINS_TOKEN, NOT_CONTAINS_TOKEN, HAS_PROPERTY, NOT_HAS_PROPERTY, IN, NOT_IN.",
+    "tags": ["record", "search", "filter", "crm"],
+    "parameters": [
+      { "name": "objectType", "default": "contacts", "options": ["contacts", "companies", "deals", "tickets"] },
+      { "name": "filterProperty", "default": "lifecyclestage" },
+      { "name": "operator", "default": "EQ", "options": ["EQ", "NEQ", "CONTAINS_TOKEN", "GT", "LT", "HAS_PROPERTY", "NOT_HAS_PROPERTY", "IN", "NOT_IN"] },
+      { "name": "filterValue", "default": "lead" },
+      { "name": "properties", "default": "firstname,lastname,email" }
+    ]
+  },
+  {
+    "id": "record-create-single",
+    "name": "Create CRM Record",
+    "category": "record",
+    "module": "A1",
+    "layer": "mcp",
+    "description": "Create a single CRM record with validation of required fields",
+    "prompt": "Create a single {objectType} record with these properties: {properties}\n\nValidate required fields before creating:\n- Contacts: must have email\n- Companies: must have name\n- Deals: must have dealname, pipeline, dealstage\n- Tickets: must have subject\n\nIf required fields are missing, report which ones and ask for values.\n\nUse create_record MCP tool. Show the created record ID and a summary of the record.\n\nIf the record references a pipeline or stage, validate they exist first.",
+    "tags": ["record", "create", "crm"],
+    "parameters": [
+      { "name": "objectType", "default": "contacts", "options": ["contacts", "companies", "deals", "tickets"] },
+      { "name": "properties" }
+    ]
+  },
+  {
+    "id": "record-update-batch",
+    "name": "Batch Update Records",
+    "category": "record",
+    "module": "A1",
+    "layer": "mcp",
+    "description": "Find records matching a filter and batch update a property value",
+    "prompt": "Find all {objectType} matching: {filterProperty} {operator} {filterValue}\n\nUpdate property {updateProperty} to \"{newValue}\" for all matching records.\n\nBefore executing:\n1. Search for matching records using search_records\n2. Show the total count of matching records\n3. Show a sample of 5 records with current value of {updateProperty}\n4. Wait for explicit confirmation\n\nAfter confirmation, use batch_upsert_records for efficient bulk updates (up to 100 per batch).\n\nReport:\n- Total records updated\n- Any errors encountered\n- Sample of 3 updated records to verify",
+    "tags": ["record", "batch", "update", "bulk"],
+    "parameters": [
+      { "name": "objectType", "default": "contacts", "options": ["contacts", "companies", "deals", "tickets"] },
+      { "name": "filterProperty" },
+      { "name": "operator", "default": "EQ" },
+      { "name": "filterValue" },
+      { "name": "updateProperty" },
+      { "name": "newValue" }
+    ]
+  },
+  {
+    "id": "record-merge-duplicates",
+    "name": "Merge Duplicate Records",
+    "category": "record",
+    "module": "A1",
+    "layer": "mcp",
+    "description": "Find and merge duplicate records by matching property",
+    "prompt": "Find potential duplicate {objectType} by matching on {matchProperty}.\n\nSteps:\n1. Search all {objectType} and group by {matchProperty} value\n2. Identify groups with 2+ records sharing the same value\n3. For each group of duplicates, show:\n   - All record IDs\n   - Key properties for comparison (name, email, createdate, last activity)\n   - Recommended primary record (most complete data, most recent activity)\n4. Present the merge plan: which records merge into which primary\n5. Wait for explicit confirmation\n\nNote: Record merging may not be available via MCP tools. If not, provide the list of duplicate groups with merge recommendations for manual action in HubSpot UI.",
+    "tags": ["record", "merge", "duplicates", "cleanup"],
+    "parameters": [
+      { "name": "objectType", "default": "contacts", "options": ["contacts", "companies"] },
+      { "name": "matchProperty", "default": "email" }
+    ]
+  },
+  {
+    "id": "record-gdpr-delete",
+    "name": "GDPR Delete Contact",
+    "category": "record",
+    "module": "A1",
+    "layer": "mcp",
+    "description": "Permanently delete a contact and all associated data per GDPR requirements",
+    "prompt": "GDPR permanent deletion request for contact {contactId}.\n\nThis is IRREVERSIBLE. Follow this strict process:\n\n1. Fetch the contact record using get_record to show full details:\n   - Email address\n   - Name\n   - Associated companies, deals, tickets\n   - Creation date\n   - Total records that will be affected\n\n2. Display all details and warn:\n   \"This will PERMANENTLY delete this contact and all associated data. This cannot be undone.\"\n\n3. Ask the user to confirm by typing back the exact email address of the contact.\n\n4. Verify the typed email matches the contact record exactly.\n\n5. Only then proceed with the GDPR deletion.\n\nNote: GDPR deletion may not be available via MCP tools. If not available, provide the manual steps to execute in HubSpot UI under Privacy & Consent > GDPR Delete.",
+    "tags": ["record", "gdpr", "delete", "privacy", "compliance"],
+    "parameters": [
+      { "name": "contactId" }
+    ]
+  },
+  {
+    "id": "export-portal-config",
+    "name": "Export Full Portal Config",
+    "category": "export",
+    "module": "E2",
+    "layer": "mcp",
+    "description": "Export complete portal configuration as a structured JSON template for re-import",
+    "prompt": "Export the complete portal configuration as a structured template.\n\nGather all resources:\n1. Custom properties for all object types (contacts, companies, deals, tickets):\n   - Use list_properties for each object type\n   - Filter to custom properties only (exclude HubSpot defaults)\n   - Include: name, label, type, fieldType, groupName, options\n\n2. Property groups:\n   - Extract unique group names from properties\n\n3. Deal pipelines with stages:\n   - Use list_pipelines for deals\n   - Include stage labels, order, probabilities, metadata\n\n4. Ticket pipelines with stages:\n   - Use list_pipelines for tickets\n\n5. Workflows:\n   - Use list_workflows\n   - For each, include: name, type, enrollment criteria summary, action count\n\n6. Active lists:\n   - Use list_lists\n   - Include: name, type (DYNAMIC/MANUAL), filter summary\n\nFormat as a structured JSON template compatible with install_template.\nSave as a template draft using save_template_draft.\n\nReport total counts for each resource type.",
+    "tags": ["export", "portal", "config", "template", "backup"]
+  },
+  {
+    "id": "export-clone-workflow",
+    "name": "Clone Workflow to Template",
+    "category": "export",
+    "module": "E2",
+    "layer": "mcp",
+    "description": "Export a workflow as a portable template, stripping portal-specific IDs",
+    "prompt": "Get the full spec of workflow {flowId} using get_workflow.\n\nCreate a portable workflow template by:\n1. Stripping portal-specific IDs:\n   - Owner IDs → replace with placeholder {owner_id}\n   - Form IDs → replace with placeholder {form_id}\n   - List IDs → replace with placeholder {list_id}\n   - Team IDs → replace with placeholder {team_id}\n\n2. Preserving the workflow structure:\n   - Enrollment criteria\n   - All actions and branching\n   - Property references (these are portable)\n   - Delay configurations\n\n3. Adding configuration notes:\n   - List all placeholders that need to be filled when deploying to a new portal\n   - Note any properties that must exist on the target portal\n   - Note any pipelines/stages referenced\n\n4. Save as a workflow draft using save_workflow_draft\n\nReport:\n- Template workflow name\n- Number of actions preserved\n- Number of placeholders to configure\n- List of required properties on target portal",
+    "tags": ["export", "workflow", "template", "portable"],
+    "parameters": [
+      { "name": "flowId" }
+    ]
+  },
+  {
+    "id": "export-property-audit-csv",
+    "name": "Export Property Audit Report",
+    "category": "export",
+    "module": "E2",
+    "layer": "mcp",
+    "description": "Export a property audit as a formatted table with fill rates and recommendations",
+    "prompt": "List all custom properties for {objectType} using list_properties.\n\nFor each property, collect:\n- Internal name\n- Display label\n- Type (string, number, enumeration, etc.)\n- Field type (text, select, checkbox, etc.)\n- Group name\n- Fill rate estimate (use audit_properties if available)\n\nOutput as a formatted table suitable for CSV export:\nname | label | type | fieldType | groupName | fillRate | recommendation\n\nRecommendations:\n- Fill rate < 5%: \"DELETE CANDIDATE - Very low usage\"\n- Fill rate 5-20%: \"REVIEW - Low usage, consider consolidating\"\n- Fill rate 20-80%: \"KEEP - Moderate usage\"\n- Fill rate > 80%: \"KEEP - High usage\"\n- Names containing 'test', 'temp', 'old': \"REVIEW - Possibly temporary\"\n\nSummary stats:\n- Total custom properties\n- Delete candidates count\n- Review candidates count\n- Properties by group",
+    "tags": ["export", "properties", "audit", "csv", "report"],
+    "parameters": [
+      { "name": "objectType", "default": "contacts", "options": ["contacts", "companies", "deals", "tickets"] }
+    ]
+  },
+  {
+    "id": "deploy-workflow-safe",
+    "name": "Safe Workflow Deploy",
+    "category": "deploy",
+    "module": "B4",
+    "layer": "mcp",
+    "description": "Deploy a workflow with comprehensive safety checks and validation",
+    "prompt": "Deploy a workflow with all safety checks.\n\nPre-deployment validation:\n1. Run deep_health_check on the active portal to verify connectivity and action type support\n2. Parse the workflow spec and validate structure:\n   - name starts with [VD]\n   - isEnabled is false\n   - nextAvailableActionId is a string\n   - All actionIds are strings\n3. Check all referenced properties exist using list_properties\n4. Check all action types are supported on this portal:\n   - Flag 0-9 (in-app notification) — suggest 0-8 (internal email) instead\n   - Flag 0-11 (rotate owner) — suggest 0-5 (set hubspot_owner_id) instead\n5. Validate enrollment criteria structure (OR → AND → filters)\n6. Validate operationType matches property types\n\nIf all checks pass:\n- Deploy using deploy_workflow with allowPartial: true\n- Report the flowId\n- Report any partial-install manual steps\n\nIf checks fail:\n- Report all issues\n- Suggest fixes\n- Do NOT deploy until issues are resolved",
+    "tags": ["deploy", "workflow", "safety", "validation"],
+    "parameters": [
+      { "name": "specJson" }
+    ]
+  },
+  {
+    "id": "deploy-template-install",
+    "name": "Install Template with Checks",
+    "category": "deploy",
+    "module": "B4",
+    "layer": "mcp",
+    "description": "Install a template with dry-run preview and confirmation",
+    "prompt": "Install template {templateId} with safety checks.\n\nSteps:\n1. Run install_template with dryRun: true first\n2. Show what will be created:\n   - Properties (count and names)\n   - Pipelines (count and names)\n   - Workflows (count and names)\n   - Lists (count and names)\n3. Show what already exists (will be skipped)\n4. Show any conflicts or warnings\n5. Wait for explicit user confirmation\n\n6. After confirmation, run install_template with dryRun: false\n7. Report results:\n   - Successfully created resources\n   - Skipped resources\n   - Any partial-install results for workflows\n   - Manual steps needed (from manualSteps array)\n\nALWAYS surface manualSteps to the user — these are workflow actions that could not be auto-deployed and need manual configuration in HubSpot UI.",
+    "tags": ["deploy", "template", "install", "safety"],
+    "parameters": [
+      { "name": "templateId" }
+    ]
+  },
+  {
+    "id": "deploy-config-execute",
+    "name": "Execute Config Bundle",
+    "category": "deploy",
+    "module": "B4",
+    "layer": "mcp",
+    "description": "Execute a configuration bundle with dependency ordering and safety checks",
+    "prompt": "Execute a configuration bundle with full dependency ordering.\n\nSteps:\n1. Validate all resources in the config using validate_config\n2. Run execute_config with dryRun: true to check for conflicts\n3. Show the execution plan in dependency order:\n   a. Property Groups (created first)\n   b. Properties (depend on groups)\n   c. Pipelines (independent)\n   d. Lists (may depend on properties)\n   e. Workflows (depend on properties, pipelines, lists)\n4. Show any conflicts or existing resources\n5. Wait for explicit user confirmation\n\n6. After confirmation, run execute_config with dryRun: false\n7. Resources are created in dependency order automatically\n8. Report results:\n   - Each resource: created / skipped / failed\n   - Any partial-install results for workflows\n   - Manual steps needed\n   - Total time elapsed\n\nIf any resource fails, report the error and continue with remaining resources where possible.",
+    "tags": ["deploy", "config", "execute", "bundle"],
+    "parameters": [
+      { "name": "configJson" }
+    ]
+  },
+  {
+    "id": "portal-health-check",
+    "name": "Portal Health Check",
+    "category": "portal",
+    "module": "P1",
+    "layer": "mcp",
+    "description": "Run a comprehensive health check on the active portal",
+    "prompt": "Run a comprehensive health check on the active portal.\n\n1. Test API connectivity:\n   - Call list_portals to verify connection\n   - Call get_active_portal to confirm active portal\n\n2. Validate OAuth scopes:\n   - Call portal_capabilities to get granted scopes\n   - Check for required scopes:\n     * crm.objects.contacts (read/write)\n     * crm.objects.companies (read/write)\n     * crm.objects.deals (read/write)\n     * crm.schemas (read/write)\n     * automation (read/write)\n   - Flag missing scopes\n\n3. Check workflow action types:\n   - Call deep_health_check to test which action types work\n   - Report status for: 0-1 (Delay), 0-3 (Create task), 0-5 (Set property), 0-8 (Internal email), 0-35 (Delay alternate)\n   - Flag broken types: 0-9 (In-app notification), 0-11 (Rotate owner)\n\n4. Check for deprecation warnings\n\nReport:\n- Connectivity: OK / FAILED\n- Scopes: X of Y required scopes granted\n- Action Types: X of Y working\n- Warnings: list any issues\n- Overall Status: HEALTHY / DEGRADED / CRITICAL",
+    "tags": ["portal", "health", "diagnostic", "connectivity"]
+  },
+  {
+    "id": "portal-scope-audit",
+    "name": "Portal Scope Audit",
+    "category": "portal",
+    "module": "P1",
+    "layer": "mcp",
+    "description": "Audit OAuth scopes and flag missing permissions",
+    "prompt": "List all granted OAuth scopes on the active portal using portal_capabilities.\n\nCompare against the full list of required scopes for VeroDigital operations:\n\nRequired for CRM:\n- crm.objects.contacts.read / .write\n- crm.objects.companies.read / .write\n- crm.objects.deals.read / .write\n- crm.objects.owners.read\n- crm.schemas.contacts.read / .write\n- crm.schemas.companies.read / .write\n- crm.schemas.deals.read / .write\n\nRequired for Automation:\n- automation.read / .write\n\nRequired for Lists:\n- crm.lists.read / .write\n\nOptional but recommended:\n- crm.objects.custom.read / .write\n- crm.objects.marketing_events.read\n- files.read / .write\n\nReport:\n- Granted scopes (grouped by category)\n- Missing required scopes (CRITICAL)\n- Missing optional scopes (INFO)\n- Provide guidance on how to add missing scopes via the OAuth reauthorization flow",
+    "tags": ["portal", "scopes", "oauth", "audit", "permissions"]
+  },
+  {
+    "id": "portal-setup-guide",
+    "name": "New Portal Setup Guide",
+    "category": "portal",
+    "module": "P1",
+    "layer": "mcp",
+    "description": "Step-by-step guided setup for a new portal with VeroDigital defaults",
+    "prompt": "Step-by-step guide to set up a new portal with VeroDigital defaults.\n\nExecute each step in order, waiting for confirmation between major steps:\n\nStep 1 - Verify Connection:\n- Run list_portals and confirm the target portal\n- Run deep_health_check to verify capabilities\n- Report any scope limitations\n\nStep 2 - Create Standard Property Groups:\n- lead_scoring_custom (Contact)\n- sales_custom (Deal)\n- cs_custom (Ticket)\n- company_custom (Company)\n\nStep 3 - Create Core Custom Properties:\n- Contact: lead_segment, lead_source_detail, lead_quality_score\n- Deal: deal_type, competitor, loss_reason\n- Company: company_tier, account_manager\n\nStep 4 - Set Up Deal Pipeline:\n- Discovery → Qualification → Proposal → Negotiation → Closed Won → Closed Lost\n\nStep 5 - Create Key Workflows:\n- [VD] Lead Routing\n- [VD] Stalled Deal Alert\n- [VD] MQL Follow-Up\n- [VD] Customer Onboarding\n\nStep 6 - Create Smart Lists:\n- Hot Leads (MQL + recent activity)\n- At Risk Customers (no activity 60 days)\n\nReport progress after each step. Total estimated time: 15-20 minutes.",
+    "tags": ["portal", "setup", "guide", "onboarding", "defaults"]
+  },
+  {
+    "id": "portal-capability-report",
+    "name": "Portal Capabilities Report",
+    "category": "portal",
+    "module": "P1",
+    "layer": "mcp",
+    "description": "Generate a full capabilities report for the active portal",
+    "prompt": "Generate a complete capabilities report for the active portal.\n\nGather data from multiple sources:\n\n1. Portal Identity:\n   - Call get_active_portal for: portal name, hub ID, environment\n   - Call list_portals for connection status\n\n2. OAuth Scopes:\n   - Call portal_capabilities for all granted scopes\n   - Categorize by: CRM, Automation, Lists, Files, Custom Objects\n\n3. Action Type Support:\n   - Call deep_health_check for supported workflow action types\n   - List working vs broken action types\n\n4. Current Resource Counts:\n   - Custom properties count per object type (list_properties)\n   - Pipeline count for deals and tickets (list_pipelines)\n   - Workflow count (list_workflows)\n   - List count (list_lists)\n\n5. Portal Tier Assessment:\n   - Based on available scopes, estimate: Free, Starter, Professional, Enterprise\n   - Flag tier-limited features\n\nOutput as a structured report with sections for each category.\nInclude a summary section with key limitations and recommendations.",
+    "tags": ["portal", "capabilities", "report", "assessment"]
+  },
+  {
+    "id": "task-audit-to-clickup",
+    "name": "Audit Portal to ClickUp Tasks",
+    "category": "task",
+    "module": "T1",
+    "layer": "mcp",
+    "description": "Run a portal audit and create ClickUp tasks for each finding",
+    "prompt": "Run a comprehensive portal audit and create ClickUp tasks for each finding.\n\nStep 1 - Run Audits:\n- Property audit: audit_properties for contacts, companies, deals\n- Pipeline audit: audit_pipelines for deals and tickets\n- Data quality checks: missing required fields, orphaned records\n\nStep 2 - Categorize Findings:\nGroup each finding by category:\n- Data Quality (missing fields, bad data)\n- Properties (unused, duplicates, low fill rate)\n- Pipelines (missing stages, configuration issues)\n- Workflows (broken actions, missing references)\n\nStep 3 - Create ClickUp Tasks:\nFor each finding, create a ClickUp task in folder {clickupFolderId} with:\n- Title: \"[Category] Brief description\"\n- Description: Full technical details, current state, recommended fix\n- Priority: urgent (data loss risk), high (broken functionality), normal (improvement), low (cleanup)\n- Assignee: {assignee}\n- Due date: urgent = 2 days, high = 5 days, normal = 10 days, low = 30 days\n\nShow the full list of tasks before creating. Wait for confirmation.",
+    "tags": ["task", "audit", "clickup", "project management"],
+    "parameters": [
+      { "name": "clickupFolderId" },
+      { "name": "assignee", "default": "me" }
+    ]
+  },
+  {
+    "id": "task-implementation-board",
+    "name": "Implementation Plan to ClickUp Board",
+    "category": "task",
+    "module": "T1",
+    "layer": "mcp",
+    "description": "Convert an implementation plan into ClickUp tasks with dependencies",
+    "prompt": "From the implementation plan provided, extract each action item and create ClickUp tasks.\n\nFor each action item, create a ClickUp task in folder {clickupFolderId} with:\n- Title: Clear, actionable task name\n- Description: Full technical details including:\n  * What needs to be done\n  * Technical specifications (property types, workflow logic, etc.)\n  * Acceptance criteria\n- Dependencies: Link to blocking tasks (tasks that must complete first)\n- Priority: Based on dependency chain position (foundational = high, dependent = normal)\n- Estimated effort: small (< 30 min), medium (30-60 min), large (> 60 min)\n- Due date: Based on dependency chain and effort\n\nCreate tasks in dependency order so blocking tasks exist before their dependents:\n1. Property groups and properties first\n2. Pipelines second\n3. Lists third\n4. Workflows last (they depend on all above)\n\nAfter creating all tasks, add dependency links between them using clickup_add_task_dependency.\n\nShow a summary board view: task name | status | priority | depends on | due date",
+    "tags": ["task", "implementation", "clickup", "planning", "dependencies"],
+    "parameters": [
+      { "name": "clickupFolderId" }
+    ]
   }
 ]

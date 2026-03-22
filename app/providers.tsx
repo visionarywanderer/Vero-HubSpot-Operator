@@ -2,6 +2,7 @@
 
 import { SessionProvider } from "next-auth/react";
 import { PortalProvider } from "@/contexts/PortalContext";
+import { ToastProvider } from "@/components/shared/Toast";
 
 // next-auth v4 SessionProvider returns JSX.Element which is incompatible with
 // React 19's stricter JSX component return-type constraints. Cast to a generic
@@ -18,7 +19,7 @@ const CompatSessionProvider = SessionProvider as unknown as React.ComponentType<
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <CompatSessionProvider refetchOnWindowFocus={false} refetchWhenOffline={false}>
-      <PortalProvider>{children}</PortalProvider>
+      <PortalProvider><ToastProvider>{children}</ToastProvider></PortalProvider>
     </CompatSessionProvider>
   );
 }

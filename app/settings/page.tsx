@@ -7,18 +7,32 @@ import { AppSettingsForm } from "@/components/settings/AppSettingsForm";
 import { UserManagement } from "@/components/settings/UserManagement";
 import { McpConnectionsForm } from "@/components/settings/McpConnectionsForm";
 
+const TABS = [
+  { key: "portal", label: "Portal Configuration" },
+  { key: "app", label: "App Settings" },
+  { key: "mcp", label: "MCP Connections" },
+  { key: "users", label: "Users" },
+] as const;
+
+type TabKey = (typeof TABS)[number]["key"];
+
 export default function SettingsPage() {
   const { activePortal } = usePortal();
-  const [tab, setTab] = useState<"portal" | "app" | "mcp" | "users">("portal");
+  const [tab, setTab] = useState<TabKey>("portal");
 
   return (
     <div className="stack">
       <h1 className="page-title">Settings</h1>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <button className={`btn ${tab === "portal" ? "btn-primary" : "btn-ghost"}`} onClick={() => setTab("portal")}>Portal Configuration</button>
-        <button className={`btn ${tab === "app" ? "btn-primary" : "btn-ghost"}`} onClick={() => setTab("app")}>App Settings</button>
-        <button className={`btn ${tab === "mcp" ? "btn-primary" : "btn-ghost"}`} onClick={() => setTab("mcp")}>MCP Connections</button>
-        <button className={`btn ${tab === "users" ? "btn-primary" : "btn-ghost"}`} onClick={() => setTab("users")}>Users</button>
+      <div className="tab-bar">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            className={`tab-item${tab === t.key ? " active" : ""}`}
+            onClick={() => setTab(t.key)}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
 
       {tab === "portal" ? (
