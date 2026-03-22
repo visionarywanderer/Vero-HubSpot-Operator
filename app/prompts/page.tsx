@@ -12,17 +12,21 @@ interface PromptPack {
   content: string;
 }
 
-const CATEGORIES = ["all", "audit", "crm", "workflows", "bulk", "properties", "lists", "packs"] as const;
+const CATEGORIES = ["all", "portal", "meeting", "audit", "crm", "properties", "pipelines", "workflows", "lists", "templates", "bulk", "packs"] as const;
 type Category = (typeof CATEGORIES)[number];
 
 const CATEGORY_LABELS: Record<Category, string> = {
   all: "All",
+  portal: "Portal",
+  meeting: "Meeting",
   audit: "Audit",
   crm: "CRM",
-  workflows: "Workflows",
-  bulk: "Bulk Ops",
   properties: "Properties",
+  pipelines: "Pipelines",
+  workflows: "Workflows",
   lists: "Lists",
+  templates: "Templates",
+  bulk: "Bulk Ops",
   packs: "Prompt Packs",
 };
 
