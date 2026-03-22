@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import { usePortal } from "@/hooks/usePortal";
 import { DraftsTable, type Draft } from "@/components/drafts/DraftsTable";
+import { ContextualPrompts } from "@/components/prompts/ContextualPrompts";
 
 type Stage = {
   id?: string; stageId?: string; label: string; displayOrder?: number;
@@ -115,6 +116,8 @@ export default function PipelinesPage() {
   return (
     <div className="stack">
       <h1 className="page-title">Pipelines</h1>
+
+      <ContextualPrompts categories={["pipeline"]} />
 
       <DraftsTable
         drafts={drafts}

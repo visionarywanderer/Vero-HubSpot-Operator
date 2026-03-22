@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import { usePortal } from "@/hooks/usePortal";
 import { DraftsTable, type Draft } from "@/components/drafts/DraftsTable";
+import { ContextualPrompts } from "@/components/prompts/ContextualPrompts";
 
 type Property = {
   name: string; label: string; type: string; fieldType: string; groupName?: string;
@@ -130,6 +131,8 @@ export default function PropertiesPage() {
   return (
     <div className="stack">
       <h1 className="page-title">Properties</h1>
+
+      <ContextualPrompts categories={["property", "audit"]} />
 
       <DraftsTable
         drafts={drafts}

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import { usePortal } from "@/hooks/usePortal";
 import { DraftsTable, type Draft } from "@/components/drafts/DraftsTable";
+import { ContextualPrompts } from "@/components/prompts/ContextualPrompts";
 
 type ListSummary = {
   listId?: string; id?: string; name?: string; processingType?: string;
@@ -94,6 +95,8 @@ export default function ListsPage() {
   return (
     <div className="stack">
       <h1 className="page-title">Lists & Segments</h1>
+
+      <ContextualPrompts categories={["list"]} />
 
       <DraftsTable
         drafts={drafts}
