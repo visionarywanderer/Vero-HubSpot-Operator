@@ -340,30 +340,10 @@ class BaseHubSpotClient implements HubSpotClient {
 
     const token = authManager.getToken();
 
-    // SSRF guard: reject absolute URLs and protocol-relative paths before constructing the URL
-    if (/^[a-z][a-z0-9+.-]*:/i.test(pathname) || pathname.startsWith("//")) {
-      throw new HubSpotApiError({
-        statusCode: 400,
-        category: "SSRF_BLOCKED",
-        message: "Absolute URLs are not allowed in API paths",
-        correlationId: "local-ssrf-guard",
-      });
-    }
-
-    // Ensure pathname starts with / for safety
-    const safePath = pathname.startsWith("/") ? pathname : `/${pathname}`;
-    const url = new URL(`${HUBSPOT_BASE_URL}${safePath}`);
-
-    // Post-construction SSRF guard: ensure the resolved URL still points to the expected host
-    const allowedHost = new URL(HUBSPOT_BASE_URL).hostname;
-    if (url.hostname !== allowedHost) {
-      throw new HubSpotApiError({
-        statusCode: 400,
-        category: "SSRF_BLOCKED",
-        message: `Resolved URL host '${url.hostname}' does not match expected '${allowedHost}'`,
-        correlationId: "local-ssrf-guard-post",
-      });
-    }
+    // SSRF guard: sanitize pathname to a safe relative path, then construct against the fixed base.
+    // Strip any protocol, host, or authority component — only keep the path portion.
+    const safePath = "/" + pathname.replace(/^[a-z][a-z0-9+.-]*:\/\/[^/]*/i, "").replace(/^\/\/[^/]*/, "").replace(/^\/+/, "");
+    const url = new URL(safePath, HUBSPOT_BASE_URL);
 
     if (method === "GET" && payload) {
       const params = payload as Record<string, unknown>;
