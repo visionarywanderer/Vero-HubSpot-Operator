@@ -208,9 +208,6 @@ async function executeWorkflow(spec: WorkflowResourceSpec, cache: ResourceCache)
     ...(Array.isArray(specAny.dataSources) ? { dataSources: specAny.dataSources } : {}),
   };
 
-  // Small delay before each workflow creation to avoid HubSpot rate limits
-  await new Promise((resolve) => setTimeout(resolve, 3000));
-
   // Delegate to workflowEngine which handles pre-strip, error triage,
   // partial-install fallback, artifact saving, and learning append
   const result = await workflowEngine.deployPartial(payload);
@@ -489,7 +486,7 @@ export async function executeConfig(
 
       // Workflow resources: execute with concurrency limit of 3
       // (each workflow already has a 3-second internal delay, so limited parallelism is safe)
-      const WF_CONCURRENCY = 3;
+      const WF_CONCURRENCY = 5;
       for (let i = 0; i < workflowResources.length; i += WF_CONCURRENCY) {
         const batch = workflowResources.slice(i, i + WF_CONCURRENCY);
         const batchResults = await Promise.all(

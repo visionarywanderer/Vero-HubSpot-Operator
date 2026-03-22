@@ -418,17 +418,20 @@ class BaseHubSpotClient implements HubSpotClient {
       this.limiter.pauseAll(Number.isNaN(retryAfter) ? 10 : retryAfter);
     }
 
-    if (RETRYABLE_STATUS_CODES.has(response.status) && retryAttempt < 3) {
+    const maxRetries = response.status === 429 ? 5 : 3;
+    if (RETRYABLE_STATUS_CODES.has(response.status) && retryAttempt < maxRetries) {
       if (response.status === 429) {
-        await sleep((Number.isNaN(retryAfter) ? 10 : retryAfter) * 1000);
+        const retryDelay = (Number.isNaN(retryAfter) ? 5 : retryAfter) * 1000;
+        await sleep(retryDelay + Math.random() * 1000);
       } else {
-        const delay = Math.pow(2, retryAttempt) * 1000;
+        // Exponential backoff with jitter (cap at 32s)
+        const delay = Math.min(32000, Math.pow(2, retryAttempt) * 1000) + Math.random() * 1000;
         await sleep(delay);
       }
       return this.request(method, pathname, payload, retryAttempt + 1);
     }
 
-    if (NON_RETRYABLE_STATUS_CODES.has(response.status) || retryAttempt >= 3) {
+    if (NON_RETRYABLE_STATUS_CODES.has(response.status) || retryAttempt >= maxRetries) {
       const normalized = await normalizeError(response);
       throw new HubSpotApiError(normalized);
     }
