@@ -199,7 +199,30 @@ class HubSpotWorkflowEngine implements WorkflowEngine {
     }
 
     const safeSpec = normalizeWorkflowDefaults(spec);
-    const response = await apiClient.workflows.create(safeSpec);
+
+    // Pre-strip universally broken action types before first attempt
+    const portalId = authManager.getActivePortal().id;
+    const preStrip = preStripBrokenActions(
+      safeSpec as Record<string, unknown>,
+      String(safeSpec.name || "Unnamed"),
+      portalId
+    );
+    const deployPayload = preStrip.payload;
+
+    // Log pre-stripped actions if any
+    if (preStrip.strippedActions.length > 0) {
+      for (const stripped of preStrip.strippedActions) {
+        appendPartialInstallLearning({
+          category: "WORKFLOW",
+          workflowName: String(safeSpec.name || "Unnamed"),
+          actionTypeId: stripped.actionTypeId,
+          actionLabel: stripped.label,
+          error: stripped.reason,
+        });
+      }
+    }
+
+    const response = await apiClient.workflows.create(deployPayload);
     const created = response.data as { id?: string; flowId?: string; name?: string };
     const flowId = created.id || created.flowId;
 
@@ -209,7 +232,6 @@ class HubSpotWorkflowEngine implements WorkflowEngine {
 
     const deployed = await this.get(flowId).catch(() => ({} as WorkflowSpec));
 
-    const portalId = authManager.getActivePortal().id;
     const artifactName = String(safeSpec.name || "workflow-spec");
     await saveWorkflowSpecArtifact(portalId, artifactName, safeSpec);
 

@@ -643,9 +643,9 @@ export async function attemptPartialWorkflowInstall(
   while (attempts < MAX_ATTEMPTS) {
     attempts++;
 
-    // Rate-limit delay on retries
+    // Brief delay on retries (RateLimiter handles real throttling)
     if (attempts > 1) {
-      await new Promise((resolve) => setTimeout(resolve, 3000));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
     }
 
     try {

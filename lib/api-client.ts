@@ -340,30 +340,24 @@ class BaseHubSpotClient implements HubSpotClient {
 
     const token = authManager.getToken();
 
-    // SSRF guard: reject absolute URLs and protocol-relative paths before constructing the URL
-    if (/^[a-z][a-z0-9+.-]*:/i.test(pathname) || pathname.startsWith("//")) {
+    // SSRF guard: split the pathname into segments, validate against an allowlist of
+    // HubSpot API root segments, then reconstruct the URL from hardcoded base + safe
+    // segments. Each segment is individually URI-encoded to prevent path traversal.
+    // This breaks the CodeQL taint chain because the URL is assembled from individually
+    // validated, encoded components — not from the raw user-provided string.
+    const segments = pathname.replace(/^\/+/, "").split("/").filter(Boolean);
+    const ALLOWED_ROOTS = new Set(["crm", "automation", "marketing", "conversations", "cms", "webhooks", "oauth", "integrations", "files"]);
+    if (segments.length === 0 || !ALLOWED_ROOTS.has(segments[0])) {
       throw new HubSpotApiError({
         statusCode: 400,
         category: "SSRF_BLOCKED",
-        message: "Absolute URLs are not allowed in API paths",
+        message: `API path must start with one of: ${Array.from(ALLOWED_ROOTS).join(", ")}`,
         correlationId: "local-ssrf-guard",
       });
     }
-
-    // Ensure pathname starts with / for safety
-    const safePath = pathname.startsWith("/") ? pathname : `/${pathname}`;
-    const url = new URL(`${HUBSPOT_BASE_URL}${safePath}`);
-
-    // Post-construction SSRF guard: ensure the resolved URL still points to the expected host
-    const allowedHost = new URL(HUBSPOT_BASE_URL).hostname;
-    if (url.hostname !== allowedHost) {
-      throw new HubSpotApiError({
-        statusCode: 400,
-        category: "SSRF_BLOCKED",
-        message: `Resolved URL host '${url.hostname}' does not match expected '${allowedHost}'`,
-        correlationId: "local-ssrf-guard-post",
-      });
-    }
+    const safePath = "/" + segments.map((s) => encodeURIComponent(s)).join("/");
+    const url = new URL(HUBSPOT_BASE_URL);
+    url.pathname = safePath;
 
     if (method === "GET" && payload) {
       const params = payload as Record<string, unknown>;
@@ -418,17 +412,20 @@ class BaseHubSpotClient implements HubSpotClient {
       this.limiter.pauseAll(Number.isNaN(retryAfter) ? 10 : retryAfter);
     }
 
-    if (RETRYABLE_STATUS_CODES.has(response.status) && retryAttempt < 3) {
+    const maxRetries = response.status === 429 ? 5 : 3;
+    if (RETRYABLE_STATUS_CODES.has(response.status) && retryAttempt < maxRetries) {
       if (response.status === 429) {
-        await sleep((Number.isNaN(retryAfter) ? 10 : retryAfter) * 1000);
+        const retryDelay = (Number.isNaN(retryAfter) ? 5 : retryAfter) * 1000;
+        await sleep(retryDelay + Math.random() * 1000);
       } else {
-        const delay = Math.pow(2, retryAttempt) * 1000;
+        // Exponential backoff with jitter (cap at 32s)
+        const delay = Math.min(32000, Math.pow(2, retryAttempt) * 1000) + Math.random() * 1000;
         await sleep(delay);
       }
       return this.request(method, pathname, payload, retryAttempt + 1);
     }
 
-    if (NON_RETRYABLE_STATUS_CODES.has(response.status) || retryAttempt >= 3) {
+    if (NON_RETRYABLE_STATUS_CODES.has(response.status) || retryAttempt >= maxRetries) {
       const normalized = await normalizeError(response);
       throw new HubSpotApiError(normalized);
     }
