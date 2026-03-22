@@ -501,6 +501,30 @@ a:hover { text-decoration: underline; }
 }
 .prompt-chip-active:hover { background: var(--accent); color: var(--bg); }
 
+/* Contextual prompts */
+.contextual-prompts { border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--card); }
+.contextual-prompts-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 14px; cursor: pointer; user-select: none;
+}
+.contextual-prompts-header h4 { margin: 0; font-size: 13px; color: var(--fg-secondary); }
+.contextual-prompts-chevron { color: var(--muted); font-size: 14px; transition: transform var(--transition); }
+.contextual-prompts-chevron.open { transform: rotate(90deg); }
+.contextual-prompts-body { padding: 0 14px 14px; display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; }
+.contextual-prompts-body .prompt-card { padding: 10px; }
+.contextual-prompts-body .prompt-title { font-size: 13px; }
+.contextual-prompts-body .prompt-desc { font-size: 11px; }
+
+/* Prompt toast */
+.prompt-toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  background: var(--accent); color: #fff; padding: 10px 20px;
+  border-radius: var(--radius-md); font-size: 13px; font-weight: 500;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.2); z-index: 9999;
+  animation: toast-in 0.3s ease-out;
+}
+@keyframes toast-in { from { opacity: 0; transform: translateX(-50%) translateY(10px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+
 .chat-history { max-height: 62vh; overflow: auto; }
 .warning-pill, .portal-pill { font-size: 12px; border-radius: 6px; padding: 3px 10px; width: fit-content; }
 .warning-pill { background: var(--warning-bg); color: var(--warning); }

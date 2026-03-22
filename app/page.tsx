@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { usePortal } from "@/hooks/usePortal";
 import { apiGet } from "@/lib/api";
 import Link from "next/link";
+import { ContextualPrompts } from "@/components/prompts/ContextualPrompts";
 
 type StatsResponse = {
   ok: true;
@@ -84,6 +85,15 @@ export default function DashboardPage() {
           {stats?.openDealValue ? <div style={{ fontSize: 12, color: "var(--muted)" }}>${stats.openDealValue.toLocaleString()}</div> : null}
         </div>
         <div className="card"><h3>Changes Today</h3><div style={{ fontSize: 24, fontWeight: 600 }}>{stats?.changesToday ?? "—"}</div></div>
+      </div>
+
+      {/* Quick Prompts */}
+      <div className="card stack">
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <h3 style={{ margin: 0 }}>Quick Prompts</h3>
+          <Link href="/prompts" className="btn btn-ghost" style={{ fontSize: 12 }}>View All</Link>
+        </div>
+        <ContextualPrompts categories={["audit", "template", "meeting"]} />
       </div>
 
       <div className="card-grid two">

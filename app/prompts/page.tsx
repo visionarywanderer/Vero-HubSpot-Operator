@@ -12,21 +12,25 @@ interface PromptPack {
   content: string;
 }
 
-const CATEGORIES = ["all", "portal", "meeting", "audit", "crm", "properties", "pipelines", "workflows", "lists", "templates", "bulk", "packs"] as const;
+const CATEGORIES = ["all", "audit", "meeting", "property", "pipeline", "workflow", "workflow-management", "list", "bulk", "template", "record", "export", "deploy", "task", "portal", "packs"] as const;
 type Category = (typeof CATEGORIES)[number];
 
 const CATEGORY_LABELS: Record<Category, string> = {
   all: "All",
-  portal: "Portal",
-  meeting: "Meeting",
-  audit: "Audit",
-  crm: "CRM",
-  properties: "Properties",
-  pipelines: "Pipelines",
-  workflows: "Workflows",
-  lists: "Lists",
-  templates: "Templates",
+  audit: "Audit & Health",
+  meeting: "Meeting Analysis",
+  property: "Properties",
+  pipeline: "Pipelines",
+  workflow: "Workflows",
+  "workflow-management": "Workflow Mgmt",
+  list: "Lists & Segments",
   bulk: "Bulk Ops",
+  template: "Templates & Setup",
+  record: "Records",
+  export: "Export & Clone",
+  deploy: "Deployment",
+  task: "Task Delivery",
+  portal: "Portal Mgmt",
   packs: "Prompt Packs",
 };
 
@@ -40,7 +44,6 @@ function CopyButton({ text }: { text: string }) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // Fallback for non-secure contexts
       const textarea = document.createElement("textarea");
       textarea.value = text;
       textarea.style.position = "fixed";
@@ -55,11 +58,7 @@ function CopyButton({ text }: { text: string }) {
   };
 
   return (
-    <button
-      className="btn btn-copy"
-      onClick={handleCopy}
-      title="Copy to clipboard"
-    >
+    <button className="btn btn-copy" onClick={handleCopy} title="Copy to clipboard">
       {copied ? "Copied!" : "Copy"}
     </button>
   );
@@ -76,24 +75,17 @@ function PromptExpandCard({
 
   return (
     <div className="card prompt-expand-card" style={{ padding: 16 }}>
-      <div
-        style={{ cursor: "pointer" }}
-        onClick={() => setExpanded(!expanded)}
-      >
+      <div style={{ cursor: "pointer" }} onClick={() => setExpanded(!expanded)}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               <h3 style={{ margin: 0, fontSize: 15 }}>{item.name}</h3>
               <span className="badge prompt-category-badge">{item.category}</span>
             </div>
-            <p style={{ margin: "4px 0 8px", color: "var(--fg-secondary)", fontSize: 13 }}>
-              {item.description}
-            </p>
+            <p style={{ margin: "4px 0 8px", color: "var(--fg-secondary)", fontSize: 13 }}>{item.description}</p>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               {item.tags.map((tag) => (
-                <span key={tag} className="badge" style={{ fontSize: 11 }}>
-                  {tag}
-                </span>
+                <span key={tag} className="badge" style={{ fontSize: 11 }}>{tag}</span>
               ))}
             </div>
           </div>
@@ -101,19 +93,14 @@ function PromptExpandCard({
             {item.parameters?.length ? (
               <button
                 className="btn btn-ghost"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onParamInsert(item);
-                }}
+                onClick={(e) => { e.stopPropagation(); onParamInsert(item); }}
                 title="Fill parameters and copy"
               >
                 Params
               </button>
             ) : null}
             <CopyButton text={item.prompt || item.name} />
-            <span
-              style={{ fontSize: 16, color: "var(--muted)", transition: "transform 0.2s", transform: expanded ? "rotate(90deg)" : "rotate(0)" }}
-            >
+            <span style={{ fontSize: 16, color: "var(--muted)", transition: "transform 0.2s", transform: expanded ? "rotate(90deg)" : "rotate(0)" }}>
               &#8250;
             </span>
           </div>
@@ -152,9 +139,7 @@ function PackExpandCard({ pack }: { pack: PromptPack }) {
           </div>
           <div style={{ display: "flex", gap: 8, flexShrink: 0, alignItems: "center" }}>
             <CopyButton text={pack.content} />
-            <span
-              style={{ fontSize: 16, color: "var(--muted)", transition: "transform 0.2s", transform: expanded ? "rotate(90deg)" : "rotate(0)" }}
-            >
+            <span style={{ fontSize: 16, color: "var(--muted)", transition: "transform 0.2s", transform: expanded ? "rotate(90deg)" : "rotate(0)" }}>
               &#8250;
             </span>
           </div>
@@ -192,9 +177,7 @@ export default function PromptsPage() {
     }
   }, []);
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  useEffect(() => { fetchData(); }, [fetchData]);
 
   const filteredPrompts = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -236,7 +219,7 @@ export default function PromptsPage() {
       <div>
         <h1 className="page-title">Prompt Library</h1>
         <p className="page-subtitle">
-          Browse, search, and copy pre-built prompts for HubSpot operations. Use these in Claude to work with the MCP.
+          {prompts.length} ready-to-use prompts for HubSpot operations. Click any prompt to expand and copy.
         </p>
         <div className="accent-stripe" />
       </div>
@@ -257,7 +240,7 @@ export default function PromptsPage() {
 
       {/* Category Chips */}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        {CATEGORIES.map((cat) => (
+        {CATEGORIES.filter((cat) => cat === "all" || cat === "packs" || (counts[cat] ?? 0) > 0).map((cat) => (
           <button
             key={cat}
             className={`btn prompt-chip${category === cat ? " prompt-chip-active" : ""}`}

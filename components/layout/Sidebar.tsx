@@ -20,12 +20,12 @@ const NAV: NavGroup[] = [
   {
     group: "CONFIGURE",
     items: [
+      { label: "Prompt Library", href: "/prompts" },
       { label: "Templates", href: "/templates" },
       { label: "Properties", href: "/properties" },
       { label: "Pipelines", href: "/pipelines" },
       { label: "Workflows", href: "/workflows" },
       { label: "Lists & Segments", href: "/lists" },
-      { label: "Prompt Library", href: "/prompts" },
     ],
   },
   {

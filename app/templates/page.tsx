@@ -5,6 +5,7 @@ import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import { usePortal } from "@/hooks/usePortal";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { DraftsTable, type Draft } from "@/components/drafts/DraftsTable";
+import { ContextualPrompts } from "@/components/prompts/ContextualPrompts";
 import type {
   TemplateDefinition,
   PackDefinition,
@@ -182,6 +183,8 @@ export default function TemplatesPage() {
         </div>
         <div className="accent-stripe" />
       </div>
+
+      <ContextualPrompts categories={["template", "deploy", "export"]} />
 
       {!activePortal && (
         <div className="card" style={{ padding: 20, textAlign: "center", color: "var(--fg-secondary)" }}>Connect a portal first to install templates.</div>

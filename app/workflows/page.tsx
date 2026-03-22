@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import { usePortal } from "@/hooks/usePortal";
 import { DraftsTable, type Draft } from "@/components/drafts/DraftsTable";
+import { ContextualPrompts } from "@/components/prompts/ContextualPrompts";
 
 type WorkflowSummary = { id?: string; flowId?: string; name?: string; type?: string; isEnabled?: boolean };
 
@@ -78,6 +79,8 @@ export default function WorkflowsPage() {
   return (
     <div className="stack">
       <h1 className="page-title">Workflows</h1>
+
+      <ContextualPrompts categories={["workflow", "workflow-management"]} />
 
       <DraftsTable
         drafts={drafts}
