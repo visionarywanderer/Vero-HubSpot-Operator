@@ -10,6 +10,7 @@ import { listManager } from "@/lib/list-manager";
 import { workflowEngine } from "@/lib/workflow-engine";
 import { hubSpotClient } from "@/lib/api-client";
 import { changeLogger } from "@/lib/change-logger";
+import { appendResourceLearning, appendSuccessPattern, type LearningCategory } from "@/lib/skills-learner";
 import { validateTemplate, validateWorkflowForDeploy } from "@/lib/constraint-validator";
 import { resolveDependencies } from "@/lib/dependency-resolver";
 import { templateStore } from "@/lib/template-store";
@@ -206,9 +207,6 @@ async function executeWorkflow(spec: WorkflowResourceSpec, cache: ResourceCache)
     actions: spec.actions,
     ...(Array.isArray(specAny.dataSources) ? { dataSources: specAny.dataSources } : {}),
   };
-
-  // Small delay before each workflow creation to avoid HubSpot rate limits
-  await new Promise((resolve) => setTimeout(resolve, 3000));
 
   // Delegate to workflowEngine which handles pre-strip, error triage,
   // partial-install fallback, artifact saving, and learning append
@@ -488,7 +486,7 @@ export async function executeConfig(
 
       // Workflow resources: execute with concurrency limit of 3
       // (each workflow already has a 3-second internal delay, so limited parallelism is safe)
-      const WF_CONCURRENCY = 3;
+      const WF_CONCURRENCY = 5;
       for (let i = 0; i < workflowResources.length; i += WF_CONCURRENCY) {
         const batch = workflowResources.slice(i, i + WF_CONCURRENCY);
         const batchResults = await Promise.all(
@@ -503,6 +501,51 @@ export async function executeConfig(
       }
 
       remaining = deferred;
+    }
+
+    // --- Auto-learn from failures and successes ---
+    const categoryMap: Record<string, LearningCategory> = {
+      property: "PROPERTY", propertyGroup: "PROPERTY",
+      pipeline: "PIPELINE", workflow: "WORKFLOW",
+      list: "LIST", customObject: "CUSTOM_OBJECT",
+      association: "ASSOCIATION",
+    };
+
+    for (const result of results) {
+      // Learn from errors (skip workflows — they already auto-learn via partial-install)
+      if (result.status === "error" && result.error && result.type !== "workflow") {
+        appendResourceLearning({
+          category: categoryMap[result.type] || "GENERAL",
+          resourceKey: result.key,
+          operation: "create",
+          error: result.error,
+        });
+      }
+    }
+
+    // Log success patterns for notable accomplishments
+    const successCount = results.filter((r) => r.status === "success").length;
+    const workflowSuccesses = results.filter((r) => r.type === "workflow" && r.status === "success");
+
+    if (successCount >= 10) {
+      appendSuccessPattern({
+        category: "TEMPLATE",
+        resourceKey: options?.templateId || "inline-config",
+        detail: `Template with ${successCount} resources installed successfully (${results.filter((r) => r.type === "property" && r.status === "success").length} properties, ${results.filter((r) => r.type === "pipeline" && r.status === "success").length} pipelines, ${workflowSuccesses.length} workflows, ${results.filter((r) => r.type === "list" && r.status === "success").length} lists)`,
+      });
+    }
+
+    for (const wf of workflowSuccesses) {
+      // Log complex workflows (5+ actions indicate non-trivial spec)
+      const spec = sorted.find((r) => r.key === wf.key)?.spec as Record<string, unknown> | undefined;
+      const actionCount = Array.isArray(spec?.actions) ? spec.actions.length : 0;
+      if (actionCount >= 5) {
+        appendSuccessPattern({
+          category: "WORKFLOW",
+          resourceKey: wf.key,
+          detail: `Workflow with ${actionCount} actions deployed successfully`,
+        });
+      }
     }
 
     const completedAt = new Date().toISOString();

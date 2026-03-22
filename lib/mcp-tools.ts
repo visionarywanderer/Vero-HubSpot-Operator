@@ -935,4 +935,349 @@ server.tool(
   }
 );
 
+// ---------------------------------------------------------------------------
+// Workflow Management Tools
+// ---------------------------------------------------------------------------
+
+server.tool(
+  "enable_workflow",
+  "Enable (activate) a workflow in HubSpot. The workflow will start enrolling records based on its trigger criteria. Use with caution — verify the workflow spec is correct before enabling.",
+  {
+    flowId: z.string().describe("The workflow flow ID to enable"),
+    portalId: z.string().optional().describe("Portal ID. Omit to use the active portal."),
+  },
+  async ({ flowId, portalId }) => {
+    const data = await api({
+      method: "PUT",
+      path: `/api/workflows/${encodeURIComponent(flowId)}`,
+      body: { portalId, spec: { isEnabled: true } },
+    });
+    return textResult(data);
+  }
+);
+
+server.tool(
+  "disable_workflow",
+  "Disable (deactivate) a workflow in HubSpot. The workflow will stop enrolling new records but won't affect currently enrolled records.",
+  {
+    flowId: z.string().describe("The workflow flow ID to disable"),
+    portalId: z.string().optional().describe("Portal ID. Omit to use the active portal."),
+  },
+  async ({ flowId, portalId }) => {
+    const data = await api({
+      method: "PUT",
+      path: `/api/workflows/${encodeURIComponent(flowId)}`,
+      body: { portalId, spec: { isEnabled: false } },
+    });
+    return textResult(data);
+  }
+);
+
+server.tool(
+  "delete_workflow",
+  "Permanently delete a workflow from HubSpot. This action cannot be undone. Requires confirmation text 'DELETE' to proceed.",
+  {
+    flowId: z.string().describe("The workflow flow ID to delete"),
+    confirmationText: z.string().describe("Must be exactly 'DELETE' to confirm deletion"),
+    portalId: z.string().optional().describe("Portal ID. Omit to use the active portal."),
+  },
+  async ({ flowId, confirmationText, portalId }) => {
+    const data = await api({
+      method: "DELETE",
+      path: `/api/workflows/${encodeURIComponent(flowId)}`,
+      body: { portalId, confirmationText },
+    });
+    return textResult(data);
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Property Group Tools
+// ---------------------------------------------------------------------------
+
+server.tool(
+  "list_property_groups",
+  "List all property groups for a HubSpot object type",
+  {
+    objectType: z.string().describe("contacts, companies, deals, tickets, etc."),
+    portalId: z.string().optional().describe("Portal ID. Omit to use the active portal."),
+  },
+  async ({ objectType, portalId }) => {
+    const data = await api({
+      path: "/api/properties/groups",
+      query: { objectType, ...(portalId ? { portalId } : {}) },
+    });
+    return textResult(data);
+  }
+);
+
+server.tool(
+  "create_property_group",
+  "Create a new property group on a HubSpot object type. Groups organize properties in the HubSpot UI.",
+  {
+    objectType: z.string().describe("contacts, companies, deals, tickets, etc."),
+    name: z.string().describe("Internal group name (lowercase_snake_case)"),
+    label: z.string().describe("Display label for the group"),
+    displayOrder: z.number().optional().describe("Display order (default: 0)"),
+    portalId: z.string().optional().describe("Portal ID. Omit to use the active portal."),
+  },
+  async ({ objectType, name, label, displayOrder, portalId }) => {
+    const data = await api({
+      method: "POST",
+      path: "/api/properties/groups",
+      body: { objectType, spec: { name, label, displayOrder }, portalId },
+    });
+    return textResult(data);
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Pipeline Stage Tools
+// ---------------------------------------------------------------------------
+
+server.tool(
+  "add_pipeline_stage",
+  "Add a new stage to an existing pipeline",
+  {
+    objectType: z.enum(["deals", "tickets"]),
+    pipelineId: z.string().describe("Pipeline ID"),
+    label: z.string().describe("Stage display name"),
+    displayOrder: z.number().optional().describe("Position in the pipeline"),
+    metadata: z.record(z.string(), z.string()).optional().describe("Stage metadata, e.g. { probability: '0.5', isClosed: 'true', closedWon: 'true' }"),
+    portalId: z.string().optional().describe("Portal ID. Omit to use the active portal."),
+  },
+  async ({ objectType, pipelineId, label, displayOrder, metadata, portalId }) => {
+    const data = await api({
+      method: "POST",
+      path: `/api/pipelines/${objectType}/${encodeURIComponent(pipelineId)}/stages`,
+      body: { label, displayOrder, metadata, portalId },
+    });
+    return textResult(data);
+  }
+);
+
+server.tool(
+  "update_pipeline_stage",
+  "Update an existing pipeline stage (rename, reorder, change metadata)",
+  {
+    objectType: z.enum(["deals", "tickets"]),
+    pipelineId: z.string().describe("Pipeline ID"),
+    stageId: z.string().describe("Stage ID to update"),
+    label: z.string().optional().describe("New stage name"),
+    displayOrder: z.number().optional().describe("New position"),
+    metadata: z.record(z.string(), z.string()).optional().describe("Updated metadata"),
+    portalId: z.string().optional().describe("Portal ID. Omit to use the active portal."),
+  },
+  async ({ objectType, pipelineId, stageId, label, displayOrder, metadata, portalId }) => {
+    const data = await api({
+      method: "PATCH",
+      path: `/api/pipelines/${objectType}/${encodeURIComponent(pipelineId)}/stages/${encodeURIComponent(stageId)}`,
+      body: { label, displayOrder, metadata, portalId },
+    });
+    return textResult(data);
+  }
+);
+
+server.tool(
+  "delete_pipeline_stage",
+  "Delete a stage from a pipeline. Cannot delete a stage that has records in it.",
+  {
+    objectType: z.enum(["deals", "tickets"]),
+    pipelineId: z.string().describe("Pipeline ID"),
+    stageId: z.string().describe("Stage ID to delete"),
+    portalId: z.string().optional().describe("Portal ID. Omit to use the active portal."),
+  },
+  async ({ objectType, pipelineId, stageId, portalId }) => {
+    const data = await api({
+      method: "DELETE",
+      path: `/api/pipelines/${objectType}/${encodeURIComponent(pipelineId)}/stages/${encodeURIComponent(stageId)}`,
+      body: { portalId },
+    });
+    return textResult(data);
+  }
+);
+
+server.tool(
+  "update_pipeline",
+  "Update an existing pipeline (rename, reorder)",
+  {
+    objectType: z.enum(["deals", "tickets"]),
+    pipelineId: z.string().describe("Pipeline ID to update"),
+    label: z.string().optional().describe("New pipeline name"),
+    displayOrder: z.number().optional().describe("New display order"),
+    portalId: z.string().optional().describe("Portal ID. Omit to use the active portal."),
+  },
+  async ({ objectType, pipelineId, label, displayOrder, portalId }) => {
+    const data = await api({
+      method: "PATCH",
+      path: `/api/pipelines/${objectType}/${encodeURIComponent(pipelineId)}`,
+      body: { label, displayOrder, portalId },
+    });
+    return textResult(data);
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Owner Tools
+// ---------------------------------------------------------------------------
+
+server.tool(
+  "list_owners",
+  "List all HubSpot owners (users) in the portal. Returns owner IDs, names, and emails. Use owner IDs for assigning records via hubspot_owner_id property.",
+  {
+    portalId: z.string().optional().describe("Portal ID. Omit to use the active portal."),
+  },
+  async ({ portalId }) => {
+    const data = await api({
+      path: "/api/owners",
+      query: portalId ? { portalId } : {},
+    });
+    return textResult(data);
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Record Merge Tools
+// ---------------------------------------------------------------------------
+
+server.tool(
+  "merge_records",
+  "Merge two CRM records. The secondary record is merged into the primary record. Property values from the primary take precedence. Associations from both records are preserved.",
+  {
+    objectType: z.string().describe("contacts, companies, deals, tickets"),
+    primaryId: z.string().describe("ID of the record to keep (primary)"),
+    secondaryId: z.string().describe("ID of the record to merge into the primary (will be archived)"),
+    portalId: z.string().optional().describe("Portal ID. Omit to use the active portal."),
+  },
+  async ({ objectType, primaryId, secondaryId, portalId }) => {
+    const data = await api({
+      method: "POST",
+      path: `/api/records/merge`,
+      body: { objectType, primaryId, secondaryId, portalId },
+    });
+    return textResult(data);
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Engagement Tools (Tasks, Notes, Calls, Meetings, Emails)
+// ---------------------------------------------------------------------------
+
+server.tool(
+  "create_engagement",
+  "Create an engagement (task, note, call, meeting, or email) associated with CRM records. Engagements track activities and interactions.",
+  {
+    type: z.enum(["tasks", "notes", "calls", "meetings", "emails"]).describe("Engagement type"),
+    properties: z.record(z.string(), z.unknown()).describe("Engagement properties (e.g. hs_task_subject, hs_note_body, hs_call_title)"),
+    associations: z.array(z.object({
+      toObjectType: z.string(),
+      toObjectId: z.string(),
+    })).optional().describe("Records to associate the engagement with"),
+    portalId: z.string().optional().describe("Portal ID. Omit to use the active portal."),
+  },
+  async ({ type, properties, associations, portalId }) => {
+    const data = await api({
+      method: "POST",
+      path: `/api/records`,
+      body: { objectType: type, properties, associations, portalId },
+    });
+    return textResult(data);
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Batch Property Tools
+// ---------------------------------------------------------------------------
+
+server.tool(
+  "batch_create_properties",
+  "Create multiple properties in a single batch operation (up to 100 per call). Much faster than creating one by one.",
+  {
+    objectType: z.string().describe("contacts, companies, deals, tickets, etc."),
+    properties: z.array(z.object({
+      name: z.string(),
+      label: z.string(),
+      type: z.string(),
+      fieldType: z.string(),
+      groupName: z.string().optional(),
+      description: z.string().optional(),
+      options: z.array(z.object({
+        label: z.string(),
+        value: z.string(),
+        displayOrder: z.number().optional(),
+      })).optional(),
+    })).describe("Array of property specs to create"),
+    portalId: z.string().optional().describe("Portal ID. Omit to use the active portal."),
+  },
+  async ({ objectType, properties, portalId }) => {
+    const data = await api({
+      method: "POST",
+      path: "/api/properties/batch",
+      body: { objectType, properties, portalId },
+    });
+    return textResult(data);
+  }
+);
+
+// ---------------------------------------------------------------------------
+// List Management Tools
+// ---------------------------------------------------------------------------
+
+server.tool(
+  "update_list",
+  "Update an existing list (rename or change filter criteria)",
+  {
+    listId: z.string().describe("List ID to update"),
+    name: z.string().optional().describe("New list name"),
+    filterBranch: z.record(z.string(), z.unknown()).optional().describe("Updated filter definition for dynamic lists"),
+    portalId: z.string().optional().describe("Portal ID. Omit to use the active portal."),
+  },
+  async ({ listId, name, filterBranch, portalId }) => {
+    const data = await api({
+      method: "PATCH",
+      path: `/api/lists/${encodeURIComponent(listId)}`,
+      body: { name, filterBranch, portalId },
+    });
+    return textResult(data);
+  }
+);
+
+server.tool(
+  "delete_list",
+  "Delete a CRM list. This removes the list definition but does not delete the records in it.",
+  {
+    listId: z.string().describe("List ID to delete"),
+    portalId: z.string().optional().describe("Portal ID. Omit to use the active portal."),
+  },
+  async ({ listId, portalId }) => {
+    const data = await api({
+      method: "DELETE",
+      path: `/api/lists/${encodeURIComponent(listId)}`,
+      body: { portalId },
+    });
+    return textResult(data);
+  }
+);
+
+// ---------------------------------------------------------------------------
+// GDPR Tools
+// ---------------------------------------------------------------------------
+
+server.tool(
+  "gdpr_delete_contact",
+  "Permanently delete a contact for GDPR compliance (right to be forgotten). This is irreversible and removes all data including analytics.",
+  {
+    contactId: z.string().describe("Contact record ID to permanently delete"),
+    portalId: z.string().optional().describe("Portal ID. Omit to use the active portal."),
+  },
+  async ({ contactId, portalId }) => {
+    const data = await api({
+      method: "POST",
+      path: "/api/records/gdpr-delete",
+      body: { contactId, portalId },
+    });
+    return textResult(data);
+  }
+);
+
 } // end registerTools()
