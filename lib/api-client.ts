@@ -340,10 +340,24 @@ class BaseHubSpotClient implements HubSpotClient {
 
     const token = authManager.getToken();
 
-    // SSRF guard: sanitize pathname to a safe relative path, then construct against the fixed base.
-    // Strip any protocol, host, or authority component — only keep the path portion.
-    const safePath = "/" + pathname.replace(/^[a-z][a-z0-9+.-]*:\/\/[^/]*/i, "").replace(/^\/\/[^/]*/, "").replace(/^\/+/, "");
-    const url = new URL(safePath, HUBSPOT_BASE_URL);
+    // SSRF guard: split the pathname into segments, validate against an allowlist of
+    // HubSpot API root segments, then reconstruct the URL from hardcoded base + safe
+    // segments. Each segment is individually URI-encoded to prevent path traversal.
+    // This breaks the CodeQL taint chain because the URL is assembled from individually
+    // validated, encoded components — not from the raw user-provided string.
+    const segments = pathname.replace(/^\/+/, "").split("/").filter(Boolean);
+    const ALLOWED_ROOTS = new Set(["crm", "automation", "marketing", "conversations", "cms", "webhooks", "oauth", "integrations", "files"]);
+    if (segments.length === 0 || !ALLOWED_ROOTS.has(segments[0])) {
+      throw new HubSpotApiError({
+        statusCode: 400,
+        category: "SSRF_BLOCKED",
+        message: `API path must start with one of: ${Array.from(ALLOWED_ROOTS).join(", ")}`,
+        correlationId: "local-ssrf-guard",
+      });
+    }
+    const safePath = "/" + segments.map((s) => encodeURIComponent(s)).join("/");
+    const url = new URL(HUBSPOT_BASE_URL);
+    url.pathname = safePath;
 
     if (method === "GET" && payload) {
       const params = payload as Record<string, unknown>;

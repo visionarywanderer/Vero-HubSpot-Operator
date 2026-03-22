@@ -17,7 +17,7 @@ const CompatSessionProvider = SessionProvider as unknown as React.ComponentType<
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
-    <CompatSessionProvider>
+    <CompatSessionProvider refetchOnWindowFocus={false} refetchWhenOffline={false}>
       <PortalProvider>{children}</PortalProvider>
     </CompatSessionProvider>
   );
