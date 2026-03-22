@@ -1,4 +1,4 @@
-import { hubSpotClient } from "@/lib/api-client";
+import { hubSpotClient, sanitizePathSegment } from "@/lib/api-client";
 import { authManager } from "@/lib/auth-manager";
 import { changeLogger } from "@/lib/change-logger";
 
@@ -122,7 +122,7 @@ class HubSpotListManager implements ListManager {
   }
 
   async get(listId: string): Promise<HubSpotList> {
-    const safeId = encodeURIComponent(listId);
+    const safeId = sanitizePathSegment(listId);
     const response = await hubSpotClient.get(`/crm/v3/lists/${safeId}`);
     return response.data as HubSpotList;
   }
@@ -136,7 +136,7 @@ class HubSpotListManager implements ListManager {
     }
 
     try {
-      const response = await hubSpotClient.put(`/crm/v3/lists/${encodeURIComponent(listId)}`, spec);
+      const response = await hubSpotClient.put(`/crm/v3/lists/${sanitizePathSegment(listId)}`, spec);
       const updated = response.data as HubSpotList;
 
       await logListChange({
@@ -172,7 +172,7 @@ class HubSpotListManager implements ListManager {
     }
 
     try {
-      await hubSpotClient.delete(`/crm/v3/lists/${encodeURIComponent(listId)}`);
+      await hubSpotClient.delete(`/crm/v3/lists/${sanitizePathSegment(listId)}`);
       await logListChange({
         action: "delete",
         listId,
@@ -195,7 +195,7 @@ class HubSpotListManager implements ListManager {
 
   async addMembers(listId: string, recordIds: string[]): Promise<void> {
     try {
-      await hubSpotClient.put(`/crm/v3/lists/${encodeURIComponent(listId)}/memberships/add`, {
+      await hubSpotClient.put(`/crm/v3/lists/${sanitizePathSegment(listId)}/memberships/add`, {
         recordIdsToAdd: recordIds.map((id) => Number(id))
       });
 
@@ -221,7 +221,7 @@ class HubSpotListManager implements ListManager {
 
   async removeMembers(listId: string, recordIds: string[]): Promise<void> {
     try {
-      await hubSpotClient.put(`/crm/v3/lists/${encodeURIComponent(listId)}/memberships/remove`, {
+      await hubSpotClient.put(`/crm/v3/lists/${sanitizePathSegment(listId)}/memberships/remove`, {
         recordIdsToRemove: recordIds.map((id) => Number(id))
       });
 

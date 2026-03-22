@@ -1,12 +1,35 @@
 [
   {
+    "id": "audit-data-quality",
+    "name": "Data Quality Audit",
+    "category": "audit",
+    "module": "A1",
+    "layer": "mcp",
+    "description": "Scan contacts for missing required fields",
+    "prompt": "Search all {objectType} and check for records missing these critical fields:\n- Contacts: email, firstname, lastname, lifecyclestage, hubspot_owner_id\n- Companies: name, domain, industry\n- Deals: dealname, amount, closedate, pipeline, dealstage, hubspot_owner_id\n\nFor each field, report: total records, records with value, records missing value, fill rate %.\nFlag any field with < 80% fill rate as needing attention.\nSort results by fill rate ascending (worst first).",
+    "tags": ["audit", "data quality", "contacts"],
+    "parameters": [
+      { "name": "objectType", "default": "contacts", "options": ["contacts", "companies", "deals"] }
+    ]
+  },
+  {
+    "id": "audit-pipeline-health",
+    "name": "Pipeline Health Audit",
+    "category": "audit",
+    "module": "A1",
+    "layer": "mcp",
+    "description": "Analyze deal pipeline health and stuck deals",
+    "prompt": "Get all deals grouped by pipeline and stage. For each pipeline report:\n- Total deals and total value per stage\n- Average days in each stage\n- Deals stuck > 30 days in any stage (list them)\n- Deals with close date in the past but still in open stage\n- Deals with amount = 0 or null\n\nProvide a health score for each pipeline: Green (no issues), Yellow (minor issues), Red (critical issues).",
+    "tags": ["audit", "pipeline", "deals"]
+  },
+  {
     "id": "audit-association-gaps",
     "name": "Association Gaps Audit",
     "category": "audit",
     "module": "A1",
     "layer": "mcp",
     "description": "Find missing key CRM associations",
-    "prompt": "Audit contacts/deals/companies for missing required associations. Report orphan records by type, top causes, and recommended fixes.",
+    "prompt": "Find all contacts that have a non-empty 'company' text property but no associated company record.\nFind all deals with no associated contact.\nFind all deals with no associated company.\n\nReport counts and list the first 20 of each for review.",
     "tags": ["audit", "associations", "crm"]
   },
   {
@@ -16,8 +39,11 @@
     "module": "C1/C5",
     "layer": "api",
     "description": "Identify low-value and duplicate properties",
-    "prompt": "Audit contact/company/deal properties for duplicates, near-duplicates, deprecated fields, and fill rate below 30%. Rank by cleanup impact.",
-    "tags": ["audit", "properties", "cleanup"]
+    "prompt": "List all custom properties for {objectType}. For each:\n- Name, label, type\n- Fill rate (% of records that have a value)\n- Last time any record had this property updated\n\nFlag properties with < 5% fill rate as deletion candidates.\nFlag properties with > 50% fill rate that are not used in any workflow or list as under-utilized.",
+    "tags": ["audit", "properties", "cleanup"],
+    "parameters": [
+      { "name": "objectType", "default": "contacts", "options": ["contacts", "companies", "deals"] }
+    ]
   },
   {
     "id": "audit-owner-distribution",
@@ -26,8 +52,11 @@
     "module": "A4",
     "layer": "mcp",
     "description": "Analyze owner workload and imbalance",
-    "prompt": "Analyze owner distribution across active contacts/deals/tasks. Flag over-assigned owners, inactivity, and rebalance recommendations.",
-    "tags": ["audit", "owners", "workload"]
+    "prompt": "Get all {objectType} grouped by hubspot_owner_id. For each owner report:\n- Number of assigned records\n- Number with recent activity (last 30 days)\n- Number with no activity (> 30 days)\n\nFlag owners with > 200 assigned contacts or > 50 assigned deals as overloaded.\nFlag records with no owner.",
+    "tags": ["audit", "owners", "workload"],
+    "parameters": [
+      { "name": "objectType", "default": "contacts", "options": ["contacts", "companies", "deals"] }
+    ]
   },
   {
     "id": "audit-lifecycle-accuracy",
@@ -36,7 +65,170 @@
     "module": "A1",
     "layer": "mcp",
     "description": "Detect lifecycle stage mismatches",
-    "prompt": "Audit lifecycle stage accuracy based on recent activity and deal status. Identify mismatches and suggest corrected stage transitions.",
+    "prompt": "Get all contacts grouped by lifecycle stage. Report:\n- Count per stage\n- Contacts in 'subscriber' with activity in last 30 days (should be upgraded)\n- Contacts in 'lead' or 'MQL' with an associated closed-won deal (should be 'customer')\n- Contacts with no lifecycle stage set\n\nProvide recommendations for stage corrections.",
     "tags": ["audit", "lifecycle", "data quality"]
+  },
+  {
+    "id": "crm-create-followup-tasks",
+    "name": "Create Follow-Up Tasks",
+    "category": "crm",
+    "module": "A2",
+    "layer": "mcp",
+    "description": "Bulk create tasks for matching records",
+    "prompt": "For each {objectType} that matches this criteria: {criteria}\nCreate a task assigned to the record owner:\n- Subject: \"{taskPrefix} {subject}\"\n- Body: \"{body}\"\n- Due date: {dueDays} days from now\n- Priority: {priority}\n\nBefore creating, show me the count of records that match and the list of owners who will receive tasks. Wait for my confirmation.",
+    "tags": ["crm", "tasks", "bulk"],
+    "parameters": [
+      { "name": "objectType", "default": "contacts", "options": ["contacts", "companies", "deals"] },
+      { "name": "criteria", "default": "lifecyclestage = lead" },
+      { "name": "taskPrefix", "default": "[VD]" },
+      { "name": "subject", "default": "Follow up" },
+      { "name": "body", "default": "Please follow up with this record." },
+      { "name": "dueDays", "default": "3" },
+      { "name": "priority", "default": "MEDIUM", "options": ["HIGH", "MEDIUM", "LOW"] }
+    ]
+  },
+  {
+    "id": "crm-fix-missing-associations",
+    "name": "Fix Missing Associations",
+    "category": "crm",
+    "module": "A6",
+    "layer": "mcp",
+    "description": "Auto-associate contacts to companies by name match",
+    "prompt": "Find contacts with a non-empty 'company' property but no company association.\nFor each, search companies by exact name match.\n- If exactly 1 match: create the association. Log it.\n- If 0 matches: log as 'no company found'.\n- If 2+ matches: log as 'ambiguous — manual review needed'.\n\nShow summary before executing. Wait for confirmation.",
+    "tags": ["crm", "associations", "cleanup"]
+  },
+  {
+    "id": "crm-update-lifecycle-stages",
+    "name": "Update Lifecycle Stages",
+    "category": "crm",
+    "module": "A3",
+    "layer": "mcp",
+    "description": "Bulk update lifecycle stages for matching contacts",
+    "prompt": "Find contacts matching: {criteria}\nUpdate their lifecycle stage to: {newStage}\n\nShow the count and a sample of 5 records before executing.\nWait for confirmation. Log every change with before/after values.",
+    "tags": ["crm", "lifecycle", "bulk"],
+    "parameters": [
+      { "name": "criteria", "default": "lifecyclestage = subscriber AND last activity > 30 days" },
+      { "name": "newStage", "default": "lead", "options": ["subscriber", "lead", "marketingqualifiedlead", "salesqualifiedlead", "opportunity", "customer", "evangelist"] }
+    ]
+  },
+  {
+    "id": "workflow-lead-routing",
+    "name": "Lead Routing Workflow",
+    "category": "workflows",
+    "module": "B2",
+    "layer": "mcp",
+    "description": "Route new form submissions to sales",
+    "prompt": "Create a workflow:\nWorkflow: [VD] Lead Routing - {formName}\nObject: contact\nTrigger: Contact submits form {formId}\nActions:\n  1. Set property lifecyclestage = lead\n  2. Create task for default owner: \"Route new lead from {formName}\"\n  3. Send internal email to sales manager: \"New lead submitted {formName}\"\n\nDeploy disabled. Use portal config for owner IDs and form IDs.",
+    "tags": ["workflow", "leads", "routing"],
+    "parameters": [
+      { "name": "formName", "default": "Contact Us" },
+      { "name": "formId" }
+    ]
+  },
+  {
+    "id": "workflow-stalled-deal-alert",
+    "name": "Stalled Deal Alert Workflow",
+    "category": "workflows",
+    "module": "B2",
+    "layer": "mcp",
+    "description": "Alert owners when deals stall in a stage",
+    "prompt": "Create a workflow:\nWorkflow: [VD] Stalled Deal Alert\nObject: deal\nTrigger: Deal has been in same stage > {days} days\nActions:\n  1. Send internal email to deal owner: \"Deal {dealname} has been in {stage} for {days}+ days\"\n  2. Create task for deal owner: \"Review stalled deal {dealname}\" due in 2 days\n\nDeploy disabled.",
+    "tags": ["workflow", "deals", "alerts"],
+    "parameters": [
+      { "name": "days", "default": "30" }
+    ]
+  },
+  {
+    "id": "workflow-mql-followup",
+    "name": "MQL Follow-Up Sequence",
+    "category": "workflows",
+    "module": "B2",
+    "layer": "mcp",
+    "description": "Automated follow-up when contact becomes MQL",
+    "prompt": "Create a workflow:\nWorkflow: [VD] MQL Follow-Up Sequence\nObject: contact\nTrigger: Lifecycle stage becomes MQL\nActions:\n  1. Create task for owner: \"Follow up with new MQL\" due in 1 day, high priority\n  2. Delay 3 days\n  3. If no meeting booked (hs_meetings_booked = 0):\n     Send internal email to sales manager: \"MQL has not been contacted in 3 days\"\n  4. If meeting booked:\n     Set property lead_status = \"Connected\"\n\nDeploy disabled.",
+    "tags": ["workflow", "mql", "sequence"]
+  },
+  {
+    "id": "workflow-customer-onboarding",
+    "name": "Customer Onboarding Workflow",
+    "category": "workflows",
+    "module": "B2",
+    "layer": "mcp",
+    "description": "Trigger onboarding tasks when deal closes",
+    "prompt": "Create a workflow:\nWorkflow: [VD] Customer Onboarding\nObject: deal\nTrigger: Deal stage becomes Closed Won\nActions:\n  1. Set associated contact lifecycle stage = customer\n  2. Create task for CS owner: \"Schedule onboarding call for {dealname}\" due in 1 day\n  3. Delay 7 days\n  4. Create task for CS owner: \"Check onboarding progress for {dealname}\"\n  5. Send internal email to account manager: \"Onboarding check for {dealname}\"\n\nDeploy disabled.",
+    "tags": ["workflow", "onboarding", "deals"]
+  },
+  {
+    "id": "bulk-name-standardization",
+    "name": "Name Standardization Script",
+    "category": "bulk",
+    "module": "F1",
+    "layer": "api",
+    "description": "Capitalize names and clean text fields",
+    "prompt": "Fetch all contacts. For each contact:\n- Capitalize first letter of firstname and lastname\n- Trim whitespace from all text properties\n- Lowercase email addresses\n\nGenerate a script with dry-run mode. Show count of affected records before executing.",
+    "tags": ["bulk", "cleanup", "contacts"]
+  },
+  {
+    "id": "bulk-deal-cleanup",
+    "name": "Deal Data Cleanup Script",
+    "category": "bulk",
+    "module": "F1",
+    "layer": "api",
+    "description": "Find and fix deal data issues",
+    "prompt": "Find all deals with:\n- Amount = 0 or null → create task for owner: \"Set deal amount for {dealname}\"\n- Close date in past + open stage → create task for owner: \"Update close date or stage for {dealname}\"\n- No associated contact → log for manual review\n\nGenerate script. Run dry-run first.",
+    "tags": ["bulk", "deals", "cleanup"]
+  },
+  {
+    "id": "bulk-lifecycle-migration",
+    "name": "Lifecycle Migration Script",
+    "category": "bulk",
+    "module": "F1",
+    "layer": "api",
+    "description": "Bulk update lifecycle stages based on activity",
+    "prompt": "Update lifecycle stages based on activity and deal status:\n- Subscriber + form submission in 90 days → Lead\n- Lead + meeting booked → MQL\n- MQL + associated open deal → SQL\n- Any stage + associated closed-won deal → Customer\n\nGenerate script. Dry-run first. Log all transitions.",
+    "tags": ["bulk", "lifecycle", "migration"]
+  },
+  {
+    "id": "property-create-lead-scoring",
+    "name": "Create Lead Scoring Properties",
+    "category": "properties",
+    "module": "C2",
+    "layer": "api",
+    "description": "Set up lead scoring custom properties",
+    "prompt": "Create these contact properties in group \"lead_scoring_custom\":\n1. lead_segment (enumeration, select): Enterprise, Mid-Market, SMB, Unknown\n2. lead_source_detail (string, text): Free text for detailed source\n3. lead_quality_score (number): 0-100 internal score\n4. days_since_last_activity (number): Calculated field placeholder\n\nCreate the property group first if it doesn't exist.",
+    "tags": ["properties", "lead scoring", "setup"]
+  },
+  {
+    "id": "property-cleanup-audit",
+    "name": "Property Cleanup Audit",
+    "category": "properties",
+    "module": "C5",
+    "layer": "api",
+    "description": "Find unused and duplicate properties for cleanup",
+    "prompt": "List all custom properties for contacts. Find properties that:\n- Have < 5% fill rate (deletion candidates)\n- Have names containing 'test', 'temp', 'old', 'deprecated'\n- Are duplicates (similar names or labels)\n\nOutput a table: name, label, type, fill rate, recommendation (keep/review/delete).",
+    "tags": ["properties", "cleanup", "audit"]
+  },
+  {
+    "id": "list-create-hot-leads",
+    "name": "Create Hot Leads List",
+    "category": "lists",
+    "module": "D1",
+    "layer": "api",
+    "description": "Smart list of active MQLs above score threshold",
+    "prompt": "Create smart list \"Hot Leads - Active MQLs\":\n- Lifecycle stage = MQL\n- Lead score > {threshold}\n- Last activity within 7 days\n- Has associated company",
+    "tags": ["lists", "leads", "segmentation"],
+    "parameters": [
+      { "name": "threshold", "default": "50" }
+    ]
+  },
+  {
+    "id": "list-create-at-risk",
+    "name": "Create At-Risk Customers List",
+    "category": "lists",
+    "module": "D1",
+    "layer": "api",
+    "description": "Smart list of customers with no recent activity",
+    "prompt": "Create smart list \"At Risk Customers\":\n- Lifecycle stage = Customer\n- No activity in 60 days\n- Has open ticket with priority High",
+    "tags": ["lists", "customers", "churn"]
   }
 ]

@@ -1,5 +1,5 @@
 import { saveWorkflowSpecArtifact } from "@/lib/artifact-store";
-import { apiClient, hubSpotClient } from "@/lib/api-client";
+import { apiClient, hubSpotClient, sanitizePathSegment } from "@/lib/api-client";
 import { authManager } from "@/lib/auth-manager";
 import { changeLogger } from "@/lib/change-logger";
 import { canWriteInEnvironment, missingScopesFor } from "@/lib/safety-governance";
@@ -417,7 +417,7 @@ class HubSpotWorkflowEngine implements WorkflowEngine {
 
   async get(flowId: string): Promise<WorkflowSpec> {
     await authManager.ensureValidatedForSession();
-    const safeFlowId = encodeURIComponent(flowId);
+    const safeFlowId = sanitizePathSegment(flowId);
     const response = await hubSpotClient.get(`/automation/v4/flows/${safeFlowId}`);
     return response.data as WorkflowSpec;
   }

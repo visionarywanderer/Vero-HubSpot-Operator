@@ -106,7 +106,7 @@ function sleep(ms: number): Promise<void> {
  * Sanitize a user-supplied value before embedding it in a URL path segment.
  * Prevents path traversal (../) and special characters from altering the URL structure.
  */
-function sanitizePathSegment(segment: string): string {
+export function sanitizePathSegment(segment: string): string {
   // Reject empty segments
   if (!segment || !segment.trim()) {
     throw new HubSpotApiError({
