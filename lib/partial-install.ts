@@ -474,50 +474,84 @@ function stripActionsAndRelink(
 
     const newAction: WorkflowAction = { ...action };
 
-    // Re-link connection
+    // Re-link connection — if target was stripped and no valid follow-through,
+    // remove the entire connection object (connection: {} is also invalid)
     const conn = action.connection as Record<string, unknown> | undefined;
     if (conn && conn.nextActionId) {
       const resolved = resolveNextId(String(conn.nextActionId));
-      const newConn = { ...conn };
       if (resolved) {
-        newConn.nextActionId = resolved;
+        newAction.connection = { ...conn, nextActionId: resolved };
       } else {
-        delete newConn.nextActionId;
+        // Terminal action — remove connection entirely (empty {} is invalid)
+        delete newAction.connection;
       }
-      newAction.connection = newConn;
     }
 
     // Re-link branch arrays: listBranches, branches
+    // HubSpot REQUIRES nextActionId on every branch — never delete it.
+    // If no valid target, drop the entire branch from the array.
     for (const branchField of ["listBranches", "branches"]) {
       if (Array.isArray(action[branchField])) {
         newAction[branchField] = (
           action[branchField] as Array<Record<string, unknown>>
-        ).map((branch) => {
-          if (!branch.nextActionId) return branch;
-          const resolved = resolveNextId(String(branch.nextActionId));
-          const newBranch = { ...branch };
-          if (resolved) {
-            newBranch.nextActionId = resolved;
-          } else {
-            delete newBranch.nextActionId;
-          }
-          return newBranch;
-        });
+        )
+          .map((branch) => {
+            if (!branch.nextActionId) return branch;
+            const resolved = resolveNextId(String(branch.nextActionId));
+            if (resolved) {
+              return { ...branch, nextActionId: resolved };
+            }
+            // No valid target — mark for removal (nextActionId is required)
+            return null;
+          })
+          .filter((b): b is Record<string, unknown> => b !== null);
       }
     }
 
-    // Re-link defaultBranch
+    // Re-link defaultBranch — HubSpot requires nextActionId on defaultBranch.
+    // If no valid target, point to the first remaining action as fallback.
     if (action.defaultBranch && typeof action.defaultBranch === "object") {
       const db = action.defaultBranch as Record<string, unknown>;
       if (db.nextActionId) {
         const resolved = resolveNextId(String(db.nextActionId));
-        const newDb = { ...db };
         if (resolved) {
-          newDb.nextActionId = resolved;
+          newAction.defaultBranch = { ...db, nextActionId: resolved };
         } else {
-          delete newDb.nextActionId;
+          // Fallback: find any remaining non-stripped action to point to
+          const fallbackAction = actions.find(
+            (a) => !actionsToRemove.has(String(a.actionId ?? "")) && String(a.actionId ?? "") !== id
+          );
+          if (fallbackAction) {
+            newAction.defaultBranch = { ...db, nextActionId: String(fallbackAction.actionId) };
+          } else {
+            // All downstream stripped — keep defaultBranch but strip nextActionId
+            // (this is a last resort; the workflow may need manual repair)
+            newAction.defaultBranch = { ...db };
+            delete (newAction.defaultBranch as Record<string, unknown>).nextActionId;
+          }
         }
-        newAction.defaultBranch = newDb;
+      }
+    }
+
+    // Re-link IF_BRANCH nested action arrays: acceptActions, rejectActions
+    for (const nestedField of ["acceptActions", "rejectActions"]) {
+      if (Array.isArray(action[nestedField])) {
+        newAction[nestedField] = (action[nestedField] as WorkflowAction[])
+          .filter((a) => !actionsToRemove.has(String(a.actionId ?? "")))
+          .map((a) => {
+            const nestedConn = a.connection as Record<string, unknown> | undefined;
+            if (nestedConn?.nextActionId) {
+              const resolved = resolveNextId(String(nestedConn.nextActionId));
+              if (resolved) {
+                return { ...a, connection: { ...nestedConn, nextActionId: resolved } };
+              }
+              // Terminal nested action — remove connection
+              const cleaned = { ...a };
+              delete cleaned.connection;
+              return cleaned;
+            }
+            return a;
+          });
       }
     }
 
