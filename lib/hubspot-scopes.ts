@@ -90,9 +90,13 @@ const FALLBACK_REQUIRED_SCOPES = [
   "automation",
 ];
 
-// Optional scopes — kept empty until registered in HubSpot developer portal.
-// To add: register scopes in the HubSpot app settings first, then add here.
-const FALLBACK_OPTIONAL_SCOPES: string[] = [];
+const FALLBACK_OPTIONAL_SCOPES = [
+  "tickets",
+  "crm.objects.custom.read",
+  "crm.objects.custom.write",
+  "crm.objects.feedback_submissions.read",
+  "crm.objects.goals.read",
+];
 
 function parseEnvScopes(envVar: string | undefined): string[] | null {
   if (envVar === undefined || envVar === null) return null;

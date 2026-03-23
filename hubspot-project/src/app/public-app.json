@@ -31,7 +31,13 @@
       "crm.lists.write",
       "automation"
     ],
-    "optionalScopes": [],
+    "optionalScopes": [
+      "tickets",
+      "crm.objects.custom.read",
+      "crm.objects.custom.write",
+      "crm.objects.feedback_submissions.read",
+      "crm.objects.goals.read"
+    ],
     "conditionallyRequiredScopes": []
   },
   "support": {
