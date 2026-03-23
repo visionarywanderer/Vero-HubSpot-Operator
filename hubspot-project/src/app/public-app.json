@@ -31,16 +31,7 @@
       "crm.lists.write",
       "automation"
     ],
-    "optionalScopes": [
-      "crm.objects.tickets.read",
-      "crm.objects.tickets.write",
-      "crm.schemas.tickets.read",
-      "crm.schemas.tickets.write",
-      "crm.objects.custom.read",
-      "crm.objects.custom.write",
-      "crm.objects.feedback_submissions.read",
-      "crm.objects.goals.read"
-    ],
+    "optionalScopes": [],
     "conditionallyRequiredScopes": []
   },
   "support": {
