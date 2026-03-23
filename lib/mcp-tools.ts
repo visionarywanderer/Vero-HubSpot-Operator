@@ -26,6 +26,13 @@ export type ApiFn = <T = unknown>(opts: ApiOptions) => Promise<T>;
 // PII redaction — strip sensitive data before returning to MCP clients
 // ---------------------------------------------------------------------------
 
+/**
+ * Redact customer PII from text. Only used for tools that return individual
+ * contact/record data (search_records, get_record, etc.).
+ * NOT used for workflow specs, portal config, owner lists, or templates — those
+ * contain HubSpot system IDs that must stay intact for clone/deploy operations.
+ * All data stays local on the user's machine.
+ */
 export function redactPII(text: string): string {
   return text
     .replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, "{email}")
@@ -36,8 +43,22 @@ export function redactPII(text: string): string {
     });
 }
 
-/** Convenience: return MCP text content from any JSON-serializable value */
+/**
+ * Default: return MCP text content WITHOUT PII redaction.
+ * HubSpot system IDs (owner IDs, action type IDs, queue IDs, subscription IDs)
+ * must stay intact for workflow clone/deploy operations to succeed.
+ * Data is only transmitted locally between the MCP server and the AI on the user's machine.
+ */
 export function textResult(data: unknown) {
+  return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
+}
+
+/**
+ * Return MCP text content WITH PII redaction — for tools that return customer
+ * contact data (search results, individual records) which may contain names,
+ * emails, and phone numbers of real people.
+ */
+function redactedResult(data: unknown) {
   return { content: [{ type: "text" as const, text: redactPII(JSON.stringify(data, null, 2)) }] };
 }
 
@@ -309,7 +330,7 @@ server.tool(
       path: `/api/records/${encodeURIComponent(objectType)}/${encodeURIComponent(id)}`,
       query,
     });
-    return textResult(data);
+    return redactedResult(data);
   }
 );
 
@@ -333,7 +354,7 @@ server.tool(
       path: "/api/records/search",
       body: { objectType, filters, properties, portalId },
     });
-    return textResult(data);
+    return redactedResult(data);
   }
 );
 
@@ -351,7 +372,7 @@ server.tool(
       path: "/api/records",
       body: { objectType, properties, portalId },
     });
-    return textResult(data);
+    return redactedResult(data);
   }
 );
 
@@ -370,7 +391,7 @@ server.tool(
       path: `/api/records/${encodeURIComponent(objectType)}/${encodeURIComponent(id)}`,
       body: { properties, portalId },
     });
-    return textResult(data);
+    return redactedResult(data);
   }
 );
 
@@ -389,7 +410,7 @@ server.tool(
       path: "/api/records/batch-upsert",
       body: { objectType, records, idProperty, portalId },
     });
-    return textResult(data);
+    return redactedResult(data);
   }
 );
 
@@ -629,7 +650,7 @@ server.tool(
       path: "/api/workflows/clone",
       body: { sourceFlowId, newName, portalId },
     });
-    return textResult(data);
+    return redactedResult(data);
   }
 );
 
@@ -1161,7 +1182,7 @@ server.tool(
       path: `/api/records/merge`,
       body: { objectType, primaryId, secondaryId, portalId },
     });
-    return textResult(data);
+    return redactedResult(data);
   }
 );
 
@@ -1187,7 +1208,7 @@ server.tool(
       path: `/api/records`,
       body: { objectType: type, properties, associations, portalId },
     });
-    return textResult(data);
+    return redactedResult(data);
   }
 );
 
@@ -1282,7 +1303,7 @@ server.tool(
       path: "/api/records/gdpr-delete",
       body: { contactId, portalId },
     });
-    return textResult(data);
+    return redactedResult(data);
   }
 );
 
