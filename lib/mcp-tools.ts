@@ -62,6 +62,11 @@ function redactedResult(data: unknown) {
   return { content: [{ type: "text" as const, text: redactPII(JSON.stringify(data, null, 2)) }] };
 }
 
+/** Return MCP text content without PII redaction — for workflow specs that must stay deployable */
+function rawTextResult(data: unknown) {
+  return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
+}
+
 // ---------------------------------------------------------------------------
 // Tool registration
 // ---------------------------------------------------------------------------
@@ -601,7 +606,8 @@ server.tool(
       path: `/api/workflows/${flowId}`,
       query: portalId ? { portalId } : undefined,
     });
-    return textResult(data);
+    // Return unredacted so the spec stays deployable (owner IDs, emails, queue IDs intact)
+    return rawTextResult(data);
   }
 );
 
