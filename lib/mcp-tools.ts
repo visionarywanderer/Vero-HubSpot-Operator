@@ -29,7 +29,7 @@ export type ApiFn = <T = unknown>(opts: ApiOptions) => Promise<T>;
 export function redactPII(text: string): string {
   return text
     .replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, "{email}")
-    .replace(/(?:\+?\d{1,3}[-.\s]?)?\(?\d{2,4}\)?[-.\s]?\d{3,4}[-.\s]?\d{3,4}/g, "{phone}")
+    .replace(/(?:\+\d{1,3}[-.\s])\(?\d{2,4}\)?[-.\s]?\d{3,4}[-.\s]?\d{3,4}|\(\d{2,4}\)[-.\s]?\d{3,4}[-.\s]?\d{3,4}/g, "{phone}")
     .replace(/"(?:firstname|lastname|first_name|last_name)"\s*:\s*"[^"]*"/gi, (match) => {
       const key = match.split(":")[0];
       return `${key}: "{name}"`;
@@ -39,6 +39,11 @@ export function redactPII(text: string): string {
 /** Convenience: return MCP text content from any JSON-serializable value */
 export function textResult(data: unknown) {
   return { content: [{ type: "text" as const, text: redactPII(JSON.stringify(data, null, 2)) }] };
+}
+
+/** Return MCP text content without PII redaction — for workflow specs that must stay deployable */
+function rawTextResult(data: unknown) {
+  return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
 }
 
 // ---------------------------------------------------------------------------
@@ -580,7 +585,8 @@ server.tool(
       path: `/api/workflows/${flowId}`,
       query: portalId ? { portalId } : undefined,
     });
-    return textResult(data);
+    // Return unredacted so the spec stays deployable (owner IDs, emails, queue IDs intact)
+    return rawTextResult(data);
   }
 );
 
