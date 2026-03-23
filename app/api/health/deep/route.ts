@@ -10,7 +10,7 @@ const HUBSPOT_BASE_URL = "https://api.hubapi.com";
 // "expectWorking" = always available; "broken" = universally broken; "scopeDependent" = available if scopes present
 const ACTION_TYPES_TO_TEST = [
   { id: "0-1", name: "Delay", expectWorking: true },
-  { id: "0-3", name: "Create task", scopeDependent: ["tasks", "crm.objects"] },
+  { id: "0-3", name: "Create task", scopeDependent: ["automation", "tasks", "crm.objects"] },
   { id: "0-5", name: "Set property", expectWorking: true },
   { id: "0-8", name: "Internal email notification", expectWorking: true },
   { id: "0-9", name: "In-app notification", expectWorking: false, knownIssue: "Returns silent 500 errors" },

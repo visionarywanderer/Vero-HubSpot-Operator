@@ -91,10 +91,7 @@ const FALLBACK_REQUIRED_SCOPES = [
 ];
 
 const FALLBACK_OPTIONAL_SCOPES = [
-  "crm.objects.tickets.read",
-  "crm.objects.tickets.write",
-  "crm.schemas.tickets.read",
-  "crm.schemas.tickets.write",
+  "tickets",
   "crm.objects.custom.read",
   "crm.objects.custom.write",
   "crm.objects.feedback_submissions.read",
