@@ -1,21 +1,23 @@
 import { NextResponse } from "next/server";
 import { isAuthenticated } from "@/lib/api-auth";
 import { authManager } from "@/lib/auth-manager";
+import { buildOAuthUrl } from "@/lib/hubspot-scopes";
 import db from "@/lib/db";
 
 const HUBSPOT_BASE_URL = "https://api.hubapi.com";
 
 // Known action types and their expected availability
+// "expectWorking" = always available; "broken" = universally broken; "scopeDependent" = available if scopes present
 const ACTION_TYPES_TO_TEST = [
   { id: "0-1", name: "Delay", expectWorking: true },
-  { id: "0-3", name: "Create task", expectWorking: false, knownIssue: "Requires tasks scope — unavailable on current portal" },
+  { id: "0-3", name: "Create task", scopeDependent: ["tasks", "crm.objects"] },
   { id: "0-5", name: "Set property", expectWorking: true },
   { id: "0-8", name: "Internal email notification", expectWorking: true },
   { id: "0-9", name: "In-app notification", expectWorking: false, knownIssue: "Returns silent 500 errors" },
   { id: "0-11", name: "Rotate to owner", expectWorking: false, knownIssue: "Returns silent 500 errors with placeholder fields" },
   { id: "0-14", name: "Create record", expectWorking: true },
   { id: "0-63809083", name: "Add to static list", expectWorking: true },
-];
+] as const;
 
 interface EndpointCheck {
   endpoint: string;
@@ -44,6 +46,7 @@ interface DeepHealthResult {
     valid: boolean;
     expiresStatus: "valid" | "expiring" | "expired";
   };
+  reauth_url?: string;
 }
 
 async function checkEndpoint(
@@ -158,35 +161,41 @@ export async function GET(req: Request) {
         "crm.schemas.contacts.read",
         "crm.objects.owners.read",
         "automation",
+        "crm.lists.read",
+        "crm.lists.write",
       ];
 
       const missingScopes = requiredScopes.filter(
         (s) => !currentScopes.some((cs) => cs.includes(s))
       );
 
-      // --- 4. Action type availability ---
+      // --- 4. Action type availability (dynamic scope-based detection) ---
       const availableActions: Array<{ id: string; name: string }> = [];
       const brokenActions: Array<{ id: string; name: string; reason: string }> = [];
 
       for (const action of ACTION_TYPES_TO_TEST) {
-        if (action.expectWorking) {
+        if ("scopeDependent" in action && action.scopeDependent) {
+          // Check if portal has any of the required scope prefixes
+          const hasScope = action.scopeDependent.some((prefix: string) =>
+            currentScopes.some((s) => s.includes(prefix))
+          );
+          if (hasScope) {
+            availableActions.push({ id: action.id, name: action.name });
+          } else {
+            brokenActions.push({
+              id: action.id,
+              name: action.name,
+              reason: `Requires scope matching: ${action.scopeDependent.join(" or ")} — re-authorize to add`,
+            });
+          }
+        } else if ("expectWorking" in action && action.expectWorking) {
           availableActions.push({ id: action.id, name: action.name });
         } else {
           brokenActions.push({
             id: action.id,
             name: action.name,
-            reason: action.knownIssue || "Known to fail",
+            reason: ("knownIssue" in action && action.knownIssue) || "Known to fail",
           });
-        }
-      }
-
-      // Check if tasks scope became available (self-healing)
-      if (currentScopes.some((s) => s.includes("tasks"))) {
-        // tasks scope now available — move 0-3 from broken to available
-        const taskIdx = brokenActions.findIndex((a) => a.id === "0-3");
-        if (taskIdx >= 0) {
-          const removed = brokenActions.splice(taskIdx, 1)[0];
-          availableActions.push({ id: removed.id, name: removed.name });
         }
       }
 
@@ -234,6 +243,15 @@ export async function GET(req: Request) {
           expiresStatus,
         },
       };
+
+      // --- Re-auth nudge if scopes are missing ---
+      if (missingScopes.length > 0 || brokenActions.some((a) => a.reason.includes("re-authorize"))) {
+        const clientId = process.env.HUBSPOT_CLIENT_ID;
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXTAUTH_URL || "http://localhost:3000";
+        if (clientId) {
+          healthResult.reauth_url = buildOAuthUrl(clientId, `${appUrl}/api/portals/callback`);
+        }
+      }
 
       // --- Persist to app_settings for history ---
       try {
