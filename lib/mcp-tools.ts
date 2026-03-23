@@ -583,7 +583,7 @@ server.tool(
       path: "/api/workflows/deploy",
       body: { spec: workflow, portalId, allowPartial },
     });
-    return textResult(data);
+    return rawTextResult(data);
   }
 );
 
@@ -650,7 +650,7 @@ server.tool(
       path: "/api/workflows/clone",
       body: { sourceFlowId, newName, portalId },
     });
-    return redactedResult(data);
+    return rawTextResult(data);
   }
 );
 
@@ -701,7 +701,7 @@ server.tool(
       path: "/api/templates/export",
       body: { name, objectTypes, includeWorkflows, includeLists, portalId },
     });
-    return textResult(data);
+    return rawTextResult(data);
   }
 );
 
@@ -843,7 +843,7 @@ server.tool(
       path: "/api/config/execute",
       body: { resources, portalId, dryRun },
     });
-    return textResult(data);
+    return rawTextResult(data);
   }
 );
 
@@ -873,7 +873,7 @@ server.tool(
       path: "/api/templates/install",
       body: { templateId, portalId, dryRun },
     });
-    return textResult(data);
+    return rawTextResult(data);
   }
 );
 

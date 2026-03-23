@@ -90,6 +90,17 @@ const FALLBACK_REQUIRED_SCOPES = [
   "automation",
 ];
 
+const FALLBACK_OPTIONAL_SCOPES = [
+  "crm.objects.tickets.read",
+  "crm.objects.tickets.write",
+  "crm.schemas.tickets.read",
+  "crm.schemas.tickets.write",
+  "crm.objects.custom.read",
+  "crm.objects.custom.write",
+  "crm.objects.feedback_submissions.read",
+  "crm.objects.goals.read",
+];
+
 function parseEnvScopes(envVar: string | undefined): string[] | null {
   if (envVar === undefined || envVar === null) return null;
   // Explicit empty string means "none" — not "use defaults"
@@ -142,8 +153,8 @@ export function getOptionalScopes(): string[] {
   const fromEnv = parseEnvScopes(process.env.HUBSPOT_OPTIONAL_SCOPES);
   if (fromEnv !== null) return fromEnv;
 
-  // 3. No optional scopes by default
-  return [];
+  // 3. Fallback optional scopes
+  return FALLBACK_OPTIONAL_SCOPES;
 }
 
 /**
